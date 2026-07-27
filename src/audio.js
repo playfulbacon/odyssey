@@ -49,7 +49,6 @@ function noise(dur, gain = 0.06) {
 export const sfx = {
   paddle: () => tone(190, 0.05, 'square', 0.035),
   boost: () => tone(300, 0.13, 'sawtooth', 0.035, 420),
-  shield: () => tone(520, 0.05, 'square', 0.03),
   collect: (step = 0) => tone(620 * Math.pow(1.06, Math.min(step, 14)), 0.11, 'triangle', 0.06),
   crack: () => tone(240, 0.09, 'sawtooth', 0.05, -110),
   destroy: () => { tone(160, 0.22, 'sawtooth', 0.06, -110); noise(0.18, 0.05); },

@@ -43,9 +43,9 @@ Two obstacles that open the same way look the same, and an obstacle's colour is
 
 Two colours belong to neither family, and they are the two that carry rules:
 
-- **violet** — the boosted ball, and *every* breakable ring in the game. A ring
-  means one thing everywhere: only a boosted ball takes it off. Collectable
-  shields and obstacle armour are the same material.
+- **violet** — the boosted ball, and every ring of obstacle armour. A ring means
+  one thing wherever you see it: only a boosted ball takes it off. Collectables
+  never wear one.
 - **ink** — the ball at rest, the paddles, a half of the line someone is holding.
 
 The ball reports one thing and one thing only: violet means it can break a ring.
@@ -55,26 +55,19 @@ halves are gold the PHANTOM is open. That is why they are the same colour.
 
 ## Pieces
 
-**Collectables** wear rings, and rings work the same here as they do on an
-obstacle: only a boosted pass strips them, *ball power* rings at a time. An
-unboosted ball goes straight through and does nothing. Once the last ring is
-gone the core fills in — touch it again, boosted or not, to bank it.
+**Collectables** are two pieces and neither is a puzzle. Touch one and it is
+banked — no rings, no boost, no timing. They are not where the points are: a
+collectable is tempo, and fuel for your multiplier. The obstacles are the income.
 
-The **MOTE** is the exception: no rings at all, just touch it. Run 1 is nothing
-but motes, so the first run asks only that you can steer the line; the ring rule
-arrives with the ORB on run 2.
+| | pays | behaviour |
+|---|---|---|
+| **MOTE** | 60 | Sits still and waits. |
+| **DRIFTER** | 140 | The same mote, wandering. Bounces off the walls and never stops; a stub shows where it came from. |
 
-| | rings | pays | behaviour |
-|---|---|---|---|
-| **MOTE** | — | 60 | No rings. Touch it and it is banked. The plainest thing in the game, and it never grows rings however deep the run gets. |
-| **ORB** | 1 | 100 | Static. The plain one. |
-| **DRIFTER** | 2 | 190 | Wanders, bounces off the walls; a stub shows where it came from. |
-| **SPLITTER** | 2 | 110 | A double O. Bursts into three already-open shards when cracked. |
-| **RUNNER** | 1 | 260 | Small, fast, with a draining arc for its patience. |
-
-**Obstacles** cost a life on the wrong kind of contact. The breakable ones have
-armour and pay far more than any collectable, because getting them wrong is
-expensive.
+**Obstacles** are the whole game. They cost a life on the wrong kind of contact,
+and the breakable ones pay several times what a collectable does — they are the
+only things on the field that can take anything from you. Rings live here and
+nowhere else.
 
 | | wears | rings | pays | safe to touch with |
 |---|---|---|---|---|
@@ -93,11 +86,11 @@ same window destroys it outright.
 
 Everything fades in behind a dashed telegraph ring and is inert until it lands.
 
-Because every ring needs a boost, the alternating lift is the game's basic
-rhythm rather than a trick for one obstacle: you each shove as the ball runs
-away from you, so it is violet in both directions and can break anything it
-crosses. A PHANTOM is the one piece that wants you to stop doing that — line it
-up, then one of you lifts, then the other, before the first shove dies.
+Because every ring needs a boost, the alternating lift is the basic rhythm of
+scoring: you each shove as the ball runs away from you, so it is violet in both
+directions and can break whatever it crosses. A PHANTOM is the one piece that
+wants you to stop doing that — line it up, then one of you lifts, then the
+other, before the first shove dies.
 
 **Launching.** At the start of a run, and after every lost life, both players
 hold their half until the bar fills. A lost ball comes back on the paddle of the
@@ -111,15 +104,15 @@ which brings a bigger target and a nastier field. Miss the target
 or burn every life and the game is over. Score carries across runs, so the
 question is how deep you can get.
 
-Both sides ramp a piece at a time. Collectables: `MOTE`, then `ORB`, `DRIFTER`,
-`SPLITTER`, `RUNNER` by run 5. Obstacles: `SLAB`, then `BRITTLE`, `PULSAR`,
-`PHANTOM`, `ROTOR` on the same schedule.
+Run 1 is `MOTE`s and a `SLAB`: steer the line, dodge the red thing. The
+`DRIFTER` joins on run 2, and the obstacles arrive one per run — `BRITTLE`,
+`PULSAR`, `PHANTOM`, `ROTOR` — so each run teaches exactly one new idea.
 
 ## Playground
 
 A no-clock, no-target, endless-lives sandbox with one page per collectable and
 per obstacle, so a mechanic can be learned (or re-tuned) in isolation. Obstacle
-pages also spawn ringless motes, so the practice loop is pure dodging.
+pages also spawn motes, so the practice loop is pure dodging.
 
 ## Running it
 
@@ -150,7 +143,7 @@ drive it. You only move while you are "holding", exactly like a finger.
 the field is letterboxed to a phone aspect ratio so it plays the same.
 
 ```sh
-npm test     # rules tests: obstacle matrix, boost maths, shields, economy
+npm test     # rules tests: colour language, gate matrix, boost maths, economy
 npm run check
 ```
 
@@ -174,7 +167,7 @@ test/           rules tests (node --test)
 `src/config.js` is the whole dial board — ball pace, boost strength and
 duration, launch hold time, run targets, upgrade prices, and the per-run
 difficulty curve. `src/entities.js` holds the palette, the gate table, and each
-piece's own numbers (rings, payout, speed) alongside the blurb the playground
+piece's own numbers (armour, payout, speed) alongside the blurb the playground
 shows. An obstacle's colour is not written down anywhere: it comes from its
 gate, so adding a piece means picking a gate, not picking a hue.
 

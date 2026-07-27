@@ -7,8 +7,8 @@
 
 import { CFG, difficulty, derived } from './config.js';
 import {
-  PALETTE, GATES, COLLECTABLES, OBSTACLES, makeCollectable, makeObstacle, makeShards,
-  updateEntity, hitTest, resolveObstacle, resolveCollectable, stateColorOf, ballColorFor,
+  PALETTE, GATES, COLLECTABLES, OBSTACLES, makeCollectable, makeObstacle,
+  updateEntity, hitTest, resolveObstacle, stateColorOf, ballColorFor,
 } from './entities.js';
 import { sfx } from './audio.js';
 
@@ -86,7 +86,7 @@ export class Game {
     this.particles = [];
     this.floaters = [];
     this.obstacleTimer = this.mode === 'playground' ? 0.6 : 2.2;
-    this.collectTimer = 0.5;
+    this.collectTimer = 0.35;
     this.shake = 0;
     this.flash = 0;
     this.banner = null;
@@ -275,11 +275,7 @@ export class Game {
       if (!hitTest(e, x, y, br)) continue;
 
       if (e.cls === 'col') {
-        const r = resolveCollectable(e, world);
-        if (r === 'collect') this._collect(e);
-        else if (r === 'damage') this._breakShield(e);
-        // A pass leaves no cooldown, so a boost arriving mid-crossing still lands.
-        if (r !== 'pass') e.cool = CFG.hitCool;
+        this._collect(e);   // no rings, no conditions: touching it is banking it
       } else {
         const r = resolveObstacle(e, world);
         if (r === 'kill') { this._loseLife(e); return true; }
@@ -287,18 +283,6 @@ export class Game {
       }
     }
     return false;
-  }
-
-  _breakShield(e) {
-    e.shield = Math.max(0, e.shield - this.power);
-    e.flare = 1;
-    sfx.shield();
-    this._burst(e.x, e.y, PALETTE.ring, 6, 90);
-    if (e.shield === 0) {
-      e.exposed = true;
-      sfx.crack();
-      this._burst(e.x, e.y, e.color, 10, 130);
-    }
   }
 
   _collect(e) {
@@ -310,10 +294,6 @@ export class Game {
     sfx.collect(this.mult);
     this.mult = Math.min(CFG.multCap, this.mult + 1);
     this.shake = Math.max(this.shake, 2 * this.S);
-
-    if (e.type === 'splitter') {
-      for (const s of makeShards(e, this.S, this.diff)) this.entities.push(s);
-    }
   }
 
   _damageObstacle(e) {
@@ -376,10 +356,10 @@ export class Game {
       this.collectTimer -= dt;
       if (this.collectTimer <= 0) {
         this._spawnCollectable();
-        this.collectTimer = 0.55;
+        this.collectTimer = 0.35;
       }
     } else {
-      this.collectTimer = 0.55;
+      this.collectTimer = 0.35;
     }
 
     if (this.diff.obstaclePool.length && this.diff.maxObstacles > 0) {

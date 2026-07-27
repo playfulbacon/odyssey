@@ -9,8 +9,8 @@ import { CFG, UPGRADES, upgradeCost, derived, difficulty, emptyUpgrades } from '
 import {
   PALETTE, GATES, COOL, COLLECTABLES, OBSTACLES,
   isWarm, isCool, ballColorFor, lineColorFor, stateColorOf,
-  isLethal, resolveObstacle, resolveCollectable,
-  makeCollectable, makeObstacle, makeShards, hitTest, updateEntity,
+  isLethal, resolveObstacle,
+  makeCollectable, makeObstacle, hitTest, updateEntity,
 } from '../src/entities.js';
 import { Game } from '../src/game.js';
 
@@ -95,114 +95,102 @@ test('a pulsar never changes hue, only its window', () => {
   assert.equal(lit, GATES.dark.color);
 });
 
-// ── rings ───────────────────────────────────────────────────────────────────
+// ── collectables ────────────────────────────────────────────────────────────
 
-test('the mote has no rings and is banked by any touch at all', () => {
-  for (const run of [1, 5, 12]) {
-    const e = makeCollectable('mote', 0, 0, 1, difficulty(run));
-    assert.equal(e.shieldMax, 0, `run ${run}: the plain one must stay plain`);
-    assert.equal(e.exposed, true, 'open from the moment it lands');
-    for (const w of WORLDS) {
-      assert.equal(resolveCollectable(e, w), 'collect', `run ${run}, ${w.name}`);
+test('there are exactly two collectables: the still one and the moving one', () => {
+  assert.deepEqual(Object.keys(COLLECTABLES), ['mote', 'drifter']);
+  assert.ok(COLLECTABLES.drifter.speed > 0, 'the drifter moves');
+  assert.equal(COLLECTABLES.mote.speed, undefined, 'the mote does not');
+});
+
+test('no collectable wears a ring, at any depth of run', () => {
+  for (const key of Object.keys(COLLECTABLES)) {
+    assert.equal(COLLECTABLES[key].shield, undefined, `${key} def`);
+    for (const run of [1, 5, 20]) {
+      const e = makeCollectable(key, 0, 0, 1, difficulty(run));
+      assert.equal(e.shieldMax, undefined, `${key} at run ${run}`);
+      assert.equal(e.hpMax, undefined);
     }
   }
-  // Everything else does grow rings as the runs go on.
-  assert.ok(makeCollectable('orb', 0, 0, 1, difficulty(12)).shieldMax > COLLECTABLES.orb.shield);
+  // Armour is now an obstacle-only idea.
+  assert.ok(makeObstacle('brittle', 0, 0, 1, D1).hpMax > 0);
 });
 
-test('banking a mote needs no boost end to end', () => {
-  const g = mkGame();
-  const e = makeCollectable('mote', 200, 400, 1, D1);
-  e.spawnT = 0;
-  g.entities.push(e);
-  g.ball.boosted = false;
-  g._collide(e.x, e.y);
-  assert.equal(e.dead, true);
-  assert.equal(g.score, e.value);
-});
-
-test('run 1 is motes alone, so the first run never mentions boost', () => {
-  assert.deepEqual(difficulty(1).collectPool, ['mote']);
-  assert.ok(difficulty(2).collectPool.includes('orb'), 'the ring rule arrives on run 2');
-  for (let n = 1; n < 12; n++) {
-    assert.ok(difficulty(n + 1).collectPool.length >= difficulty(n).collectPool.length);
+test('touching a collectable banks it, whatever state the ball is in', () => {
+  for (const key of Object.keys(COLLECTABLES)) {
+    for (const w of WORLDS) {
+      const g = mkGame();
+      const e = makeCollectable(key, 200, 400, 1, D1);
+      e.spawnT = 0;
+      g.entities.push(e);
+      g.ball.boosted = w.boosted;
+      g.input.handsOff = w.handsOff;
+      g._collide(e.x, e.y);
+      assert.equal(e.dead, true, `${key}, ${w.name}`);
+      assert.equal(g.score, e.value, `${key}, ${w.name}`);
+    }
   }
 });
 
-test('a ring only comes off a boosted ball, on a collectable or an obstacle', () => {
-  for (const w of WORLDS) {
-    const orb = makeCollectable('orb', 0, 0, 1, D1);
-    assert.equal(resolveCollectable(orb, w), w.boosted ? 'damage' : 'pass', `orb, ${w.name}`);
+test('the drifter moves and the mote does not', () => {
+  const bounds = { x0: 0, x1: 400, y0: 0, y1: 800 };
+  const mote = makeCollectable('mote', 200, 400, 1, D1);
+  const drift = makeCollectable('drifter', 200, 400, 1, D1);
+  for (let i = 0; i < 30; i++) {
+    updateEntity(mote, 1 / 60, bounds);
+    updateEntity(drift, 1 / 60, bounds);
+  }
+  assert.equal(mote.x, 200);
+  assert.equal(mote.y, 400);
+  assert.ok(Math.hypot(drift.x - 200, drift.y - 400) > 5, 'the moving one should have moved');
+  assert.ok(drift.value > mote.value, 'and pay more for the trouble');
+});
 
+test('a drifter stays inside the reachable field when it bounces', () => {
+  const g = mkGame();
+  const b = g.fieldBounds();
+  const e = makeCollectable('drifter', (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 1, D1);
+  for (let i = 0; i < 4000; i++) {
+    updateEntity(e, 1 / 60, b);
+    assert.ok(e.x >= b.x0 - 0.001 && e.x <= b.x1 + 0.001, 'x stayed in reach');
+    assert.ok(e.y >= b.y0 - 0.001 && e.y <= b.y1 + 0.001, 'y stayed in reach');
+  }
+});
+
+test('obstacles pay far more than collectables, because they carry all the risk', () => {
+  const best = Math.max(...Object.values(COLLECTABLES).map((d) => d.value));
+  for (const d of Object.values(OBSTACLES)) {
+    if (d.value) assert.ok(d.value > best * 2, `${d.key} should be worth the risk`);
+  }
+});
+
+test('run 1 is motes alone; the moving one arrives on run 2', () => {
+  assert.deepEqual(difficulty(1).collectPool, ['mote']);
+  assert.deepEqual(difficulty(2).collectPool, ['mote', 'drifter']);
+  assert.deepEqual(difficulty(9).collectPool, ['mote', 'drifter']);
+});
+
+// ── armour ──────────────────────────────────────────────────────────────────
+
+test('a ring only comes off a boosted ball', () => {
+  for (const w of WORLDS) {
     const brittle = makeObstacle('brittle', 0, 0, 1, D1);
     if (!isLethal(brittle, w)) {
       assert.equal(resolveObstacle(brittle, w), w.boosted ? 'damage' : 'pass', `brittle, ${w.name}`);
     }
-
     const pulsar = makeObstacle('pulsar', 0, 0, 1, D1);
     pulsar.armed = false;
     assert.equal(resolveObstacle(pulsar, w), w.boosted ? 'damage' : 'pass', `dark pulsar, ${w.name}`);
   }
 });
 
-test('an unboosted pass over a shielded collectable does nothing at all', () => {
-  const g = mkGame();
-  g.power = 1;
-  const e = makeCollectable('orb', 200, 400, 1, D1);
-  e.shieldMax = 2; e.shield = 2; e.exposed = false; e.spawnT = 0;
-  g.entities.push(e);
-  g.ball.boosted = false;
-
-  g._collide(e.x, e.y);
-  assert.equal(e.shield, 2, 'no free chip for drifting through');
-  assert.equal(e.cool, 0, 'and no lockout, so a boost mid-crossing still lands');
-
-  g.ball.boosted = true;
-  g._collide(e.x, e.y);
-  assert.equal(e.shield, 1);
-  assert.ok(e.cool > 0, 'one pass, one ring');
-});
-
-test('the last ring exposes the core; banking it needs no boost', () => {
-  const g = mkGame();
-  g.power = 1;
-  const e = makeCollectable('orb', 200, 400, 1, D1);
-  e.shieldMax = 2; e.shield = 2; e.exposed = false;
-
-  g._breakShield(e);
-  assert.equal(e.exposed, false);
-  assert.equal(g.score, 0, 'stripping a ring pays nothing');
-
-  g._breakShield(e);
-  assert.equal(e.shield, 0);
-  assert.equal(e.exposed, true);
-  assert.equal(e.dead, false, 'breaking the shield opens it, it does not bank it');
-
-  assert.equal(resolveCollectable(e, { boosted: false, handsOff: false }), 'collect');
-  g._collect(e);
-  assert.equal(e.dead, true);
-  assert.equal(g.score, e.value);
-});
-
-test('ball power decides how many rings a single boosted pass takes', () => {
+test('ball power decides how much armour a single boosted pass takes', () => {
   const g = mkGame();
   g.power = 3;
-  const e = makeCollectable('orb', 200, 400, 1, D1);
-  e.shieldMax = 3; e.shield = 3; e.exposed = false;
-  g._breakShield(e);
-  assert.equal(e.shield, 0);
-  assert.equal(e.exposed, true);
-});
-
-test('splitter shards come out already open, so no boost is needed to sweep them', () => {
-  const parent = makeCollectable('splitter', 200, 400, 1, D1);
-  const shards = makeShards(parent, 1, D1);
-  assert.equal(shards.length, 3);
-  for (const s of shards) {
-    assert.equal(s.exposed, true);
-    assert.equal(resolveCollectable(s, { boosted: false, handsOff: false }), 'collect');
-    assert.ok(s.vx !== 0 || s.vy !== 0, 'shards should scatter');
-  }
+  const e = makeObstacle('brittle', 200, 400, 1, D1);
+  assert.equal(e.hp, 3);
+  g._damageObstacle(e);
+  assert.equal(e.dead, true, 'a heavy enough ball ends it in one pass');
 });
 
 // ── gates ───────────────────────────────────────────────────────────────────
@@ -343,14 +331,11 @@ test('nothing spawns where the line cannot reach it', () => {
 
 test('the multiplier climbs on every bank and resets on a death', () => {
   const g = mkGame();
-  const bank = () => {
-    const e = makeCollectable('orb', 200, 400, 1, D1);
-    e.shield = 0; e.exposed = true;
-    g._collect(e);
-  };
+  const bank = () => g._collect(makeCollectable('mote', 200, 400, 1, D1));
   bank(); assert.equal(g.mult, 2);
   bank(); assert.equal(g.mult, 3);
-  assert.equal(g.score, 100 + 200, 'the multiplier applies at the moment of banking');
+  const v = COLLECTABLES.mote.value;
+  assert.equal(g.score, v + v * 2, 'the multiplier applies at the moment of banking');
   g._loseLife(null);
   assert.equal(g.mult, 1);
 });
@@ -369,8 +354,8 @@ test('a breakable obstacle takes several passes and pays more than a collectable
   assert.equal(e.dead, true);
   assert.equal(g.score, e.value);
 
-  const orb = makeCollectable('orb', 0, 0, 1, D1);
-  assert.ok(e.value > orb.value * 3, 'risk should pay');
+  const mote = makeCollectable('mote', 0, 0, 1, D1);
+  assert.ok(e.value > mote.value * 3, 'risk should pay');
 });
 
 // ── life loss ───────────────────────────────────────────────────────────────
@@ -446,7 +431,6 @@ test('targets and threat both climb every run', () => {
   }
   assert.deepEqual(difficulty(1).obstaclePool, ['slab']);
   assert.equal(difficulty(5).obstaclePool.length, 5, 'every obstacle is in play by run 5');
-  assert.equal(difficulty(5).collectPool.length, 5, 'and every collectable');
 });
 
 test('paddle width is not for sale, because it is not a lever', () => {

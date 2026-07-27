@@ -1,8 +1,9 @@
 // Entity registry, factories, per-frame behaviour and hit tests.
 //
 // Two families:
-//   cls 'col' — collectables. Break the rings, then touch the core.
-//   cls 'obs' — obstacles. Lethal unless you meet their gate.
+//   cls 'col' — collectables. Touch one and it is banked. That is all.
+//   cls 'obs' — obstacles. Lethal unless you meet their gate, and the only
+//               things in the game that wear armour.
 //
 // Every entity is collided against as a circle except SLAB (a rectangle) and
 // ROTOR (a hub plus swept arms).
@@ -15,15 +16,15 @@
 //
 // Temperature names the family a second time, so it reads at a glance and does
 // not depend on picking out a shape at speed:
-//   cool  collectable. Hue is identity only — an ORB is not "more teal" than a
-//         DRIFTER is blue, they are just different pieces.
+//   cool  collectable. Hue is identity only — a MOTE is not "more mint" than a
+//         DRIFTER is blue, they are just the still one and the moving one.
 //   warm  obstacle. Hue is *not* identity: it names the gate, the one thing
 //         that gets you past it. Two obstacles with the same gate share a hue.
 //
 // Two colours belong to neither family, and they are the two that carry rules:
-//   RING   violet. The boosted ball, and every breakable ring in the game —
-//          collectable shields and obstacle armour are the same material and
-//          come off the same way. Boost is the only thing that breaks anything.
+//   RING   violet. The boosted ball, and every ring of obstacle armour. A ring
+//          means one thing wherever you see it: a boosted ball takes it off.
+//          Collectables never wear one — you just touch them.
 //   INK    the ball at rest, the paddles, a held half of the line.
 //
 // And the line itself is the readout for the one state the ball does not wear:
@@ -47,10 +48,7 @@ export const GATES = {
 // Cool. Identity only.
 export const COOL = {
   mint: '#8ef0d0',
-  teal: '#4ee0b0',
   blue: '#48a8f0',
-  green: '#8adc4a',
-  cyan: '#3fd2e8',
 };
 
 export const isWarm = (c) => Object.values(GATES).some((g) => g.color === c);
@@ -68,40 +66,21 @@ export function lineColorFor(touching) {
   return touching ? PALETTE.ink : GATES.handsOff.color;
 }
 
+// Collectables carry no rings and no conditions. Touch one and it is banked.
+// All of the game's depth is on the obstacle side, which is also where all of
+// the points are — a collectable is tempo and multiplier fuel, not income.
 export const COLLECTABLES = {
   mote: {
     key: 'mote', cls: 'col', label: 'MOTE', color: COOL.mint,
-    value: 60, shield: 0, shieldGrows: false, r: 10,
-    blurb: 'No rings at all. Steer the line across it and it is banked — no boost, no timing, nothing to break. It never grows rings, however deep the run gets.',
-    hint: 'The first thing you meet. All it asks is that you can put the line where you want it.',
-  },
-  orb: {
-    key: 'orb', cls: 'col', label: 'ORB', color: COOL.teal,
-    value: 100, shield: 1, r: 13,
-    blurb: 'Sits still and waits. One violet ring, and a boosted pass strips it; after that the core fills in and any touch banks it.',
-    hint: 'The plain one. Learn how the line sweeps before anything else.',
+    value: 60, r: 10,
+    blurb: 'Sits still and waits. Steer the line across it and it is banked — no rings, no boost, no timing.',
+    hint: 'All it asks is that the two of you can put the line where you want it.',
   },
   drifter: {
     key: 'drifter', cls: 'col', label: 'DRIFTER', color: COOL.blue,
-    value: 190, shield: 2, r: 12, speed: 34,
-    blurb: 'Two rings, and it will not hold still. The stub on its back points where it has come from.',
-    hint: 'Lead it. Park the line where it is going, not where it is.',
-  },
-  splitter: {
-    key: 'splitter', cls: 'col', label: 'SPLITTER', color: COOL.green,
-    value: 110, shield: 2, r: 16, shards: 3, shardValue: 80,
-    blurb: 'A double O — there is more inside. Crack the core and it bursts into three loose shards, each already open and worth banking on its own.',
-    hint: 'Do not wander off after it pops — the shards fade.',
-  },
-  runner: {
-    key: 'runner', cls: 'col', label: 'RUNNER', color: COOL.cyan,
-    value: 260, shield: 1, r: 10, speed: 118,
-    blurb: 'A small O with a thinning arc around it — that arc is its patience. One ring, fat payout, never stops moving.',
-    hint: 'A boosted ball is both the key to its ring and fast enough to catch it.',
-  },
-  shard: {
-    key: 'shard', cls: 'col', label: 'SHARD', color: COOL.green, hidden: true,
-    value: 80, shield: 0, shieldGrows: false, r: 6,
+    value: 140, r: 10, speed: 52,
+    blurb: 'The same mote, wandering. It bounces off the walls and never stops; the stub on its back points where it has come from.',
+    hint: 'Lead it. Park the line where it is going, not where it is — or boost to close the gap.',
   },
 };
 
@@ -178,9 +157,6 @@ function base(def, x, y, S) {
 export function makeCollectable(type, x, y, S, diff, rng = Math.random) {
   const def = COLLECTABLES[type];
   const e = base(def, x, y, S);
-  e.shieldMax = Math.max(0, (def.shield || 0) + (def.shieldGrows === false ? 0 : diff.shieldBonus));
-  e.shield = e.shieldMax;
-  e.exposed = e.shield <= 0;
   e.value = Math.round(def.value * diff.valueScale);
 
   if (def.speed) {
@@ -189,24 +165,7 @@ export function makeCollectable(type, x, y, S, diff, rng = Math.random) {
     e.vx = Math.cos(a) * sp;
     e.vy = Math.sin(a) * sp;
   }
-  if (type === 'runner') e.ttl = 9;
-  if (type === 'shard') { e.ttl = 6; e.spawnT = 0; }
   return e;
-}
-
-export function makeShards(parent, S, diff, rng = Math.random) {
-  const def = COLLECTABLES.splitter;
-  const out = [];
-  for (let i = 0; i < def.shards; i++) {
-    const a = (i / def.shards) * Math.PI * 2 + rng() * 0.6;
-    const s = makeCollectable('shard', parent.x, parent.y, S, diff, rng);
-    const sp = (55 + rng() * 35) * S;
-    s.vx = Math.cos(a) * sp;
-    s.vy = Math.sin(a) * sp;
-    s.value = Math.round(def.shardValue * diff.valueScale);
-    out.push(s);
-  }
-  return out;
 }
 
 export function makeObstacle(type, x, y, S, diff, rng = Math.random) {
@@ -286,11 +245,6 @@ export function updateEntity(e, dt, bounds) {
     e.r = lit ? e.rBig : e.rSmall;
   }
 
-  if (e.type === 'shard') {
-    e.vx *= Math.pow(0.16, dt);   // shards coast to a stop
-    e.vy *= Math.pow(0.16, dt);
-  }
-
   if (e.ttl !== Infinity) {
     e.ttl -= dt;
     if (e.ttl <= 0.9) e.fade = Math.max(0, e.ttl / 0.9);
@@ -354,16 +308,9 @@ export function isLethal(e, world) {
 //   'damage' — a ring comes off
 //   'pass'   — the ball goes through and nothing happens
 //
-// Rings are the same material everywhere in the game, on a collectable or on an
-// obstacle, and only a boosted ball breaks them.
+// Only a boosted ball takes a ring off.
 export function resolveObstacle(e, world) {
   if (isLethal(e, world)) return 'kill';
   return world.boosted && e.hp > 0 ? 'damage' : 'pass';
 }
 
-// Collectables are never lethal. Their shield is armour by another name: it
-// only comes off a boosted ball, and an unboosted pass does nothing at all.
-export function resolveCollectable(e, world) {
-  if (e.exposed) return 'collect';
-  return world.boosted ? 'damage' : 'pass';
-}

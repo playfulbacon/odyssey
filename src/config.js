@@ -43,7 +43,7 @@ export const CFG = {
     baseTime: 60,
     timeBonusPerSec: 25,
     // Score needed to clear run n.
-    target: (n) => Math.round(1000 * Math.pow(n, 1.25)),
+    target: (n) => Math.round(1400 * Math.pow(n, 1.26)),
   },
 
   base: {
@@ -62,7 +62,7 @@ export const UPGRADES = [
   },
   {
     id: 'power', name: 'BALL POWER', base: 1150, growth: 2.05, max: 8,
-    desc: 'Heavier ball. More damage per pass to shields and armour.',
+    desc: 'Heavier ball. More armour stripped from an obstacle per boosted pass.',
     show: (l) => `power ${CFG.base.power + l}`,
   },
   {
@@ -96,13 +96,10 @@ export function difficulty(run) {
   const r = Math.max(1, run);
   const k = r - 1;
 
-  // Run 1 is the MOTE alone: no rings, so the first run asks only that you can
-  // steer the line. The ring rule arrives with the ORB on run 2.
+  // Two collectables, neither of them a puzzle: the still one, then the moving
+  // one. Everything a player has to think about is on the obstacle side.
   const collectPool = ['mote'];
-  if (r >= 2) collectPool.push('orb');
-  if (r >= 3) collectPool.push('drifter');
-  if (r >= 4) collectPool.push('splitter');
-  if (r >= 5) collectPool.push('runner');
+  if (r >= 2) collectPool.push('drifter');
 
   const obstaclePool = ['slab'];
   if (r >= 2) obstaclePool.push('brittle');
@@ -117,7 +114,6 @@ export function difficulty(run) {
     maxObstacles: Math.min(7, 1 + Math.round(k * 0.8)),
     obstacleGap: Math.max(1.5, 4.6 - k * 0.32),      // seconds between spawns
     obstacleTtl: Math.max(9, 18 - k * 0.7),          // how long one sticks around
-    shieldBonus: Math.min(2, Math.floor(k * 0.3)),   // added to a collectable's shield
     armourBonus: Math.floor(k * 0.4),                // added to a breakable obstacle's hp
     ballSpeed: 1 + Math.min(0.55, k * 0.055),
     entitySpeed: 1 + k * 0.11,

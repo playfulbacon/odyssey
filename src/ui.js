@@ -88,12 +88,9 @@ export class UI {
         const card = el('button', 'card');
         card.type = 'button';
         const glyph = d.cls === 'col' ? 'O' : 'X';
-        const rings = d.cls === 'col' ? d.shield : d.hp;
         const pay = d.value ? `${d.value} pts` : 'no points';
-        const meta = `${rings ? `${rings} ring${rings === 1 ? '' : 's'} · ` : ''}${pay}`;
-        const need = d.cls === 'col'
-          ? (d.shield ? 'a boosted ball, then any touch' : 'any touch')
-          : GATES[d.gate].label;
+        const meta = `${d.hp ? `${d.hp} ring${d.hp === 1 ? '' : 's'} · ` : ''}${pay}`;
+        const need = d.cls === 'col' ? 'any touch at all' : GATES[d.gate].label;
         card.innerHTML =
           `<div class="row"><span class="nm"><i class="glyph" style="color:${d.color}">${glyph}</i>${d.label}</span>` +
           `<span class="meta">${meta}</span></div>` +

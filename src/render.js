@@ -4,7 +4,8 @@
 //   O and a cool hue = collectable; X and a warm hue = obstacle.
 //   The warm hue names the gate, so two obstacles that open the same way look
 //   the same. The cool hue is identity only.
-//   Violet is neither family: it is the boosted ball and every breakable ring.
+//   Violet is neither family: the boosted ball, and every ring of obstacle
+//   armour. Collectables wear no rings — touching one banks it.
 //   A half of the line you are not holding turns the PHANTOM's gold.
 
 import { CFG } from './config.js';
@@ -55,9 +56,9 @@ function pathX(ctx, x, y, r) {
   ctx.moveTo(x + k, y - k); ctx.lineTo(x - k, y + k);
 }
 
-// A ring of segments, one per point of whatever is left. Always violet, on a
-// collectable and on an obstacle alike, because a segmented ring means exactly
-// one thing anywhere in the game: a boosted ball takes this off.
+// A ring of segments, one per point of armour left. Always violet, the same
+// colour the ball turns while boosting, because that is the only thing that
+// takes one off.
 function segRing(ctx, x, y, r, total, left, S, width = 2.5) {
   if (!total) return;
   const baseA = ctx.globalAlpha;
@@ -275,56 +276,28 @@ function drawCollectable(ctx, g, e) {
   const S = g.S;
   const baseA = ctx.globalAlpha;
 
-  segRing(ctx, e.x, e.y, e.r, e.shieldMax, e.shield, S, 2.5);
-
-  // With no ring competing for the space, a ringless piece can afford a
-  // bigger core — otherwise a MOTE reads as a speck.
-  const cr = e.r * (e.shieldMax ? 0.44 : 0.62);
+  // Always open, so always the filled O with a pulse going out. Nothing here
+  // has a second state to draw.
   ctx.strokeStyle = e.color;
   ctx.fillStyle = e.color;
-  ctx.lineWidth = 1.5 * S;
 
-  if (e.exposed) {
-    // Open. Filled O pulsing in its own colour — come and take it.
-    const pulse = 1 + Math.sin(e.age * 9) * 0.12;
-    pathO(ctx, e.x, e.y, cr * pulse);
-    ctx.fill();
-    ctx.globalAlpha = baseA * 0.4;
-    ctx.lineWidth = 1.2 * S;
-    pathO(ctx, e.x, e.y, e.r * (0.6 + ((e.age * 1.6) % 1) * 0.6));
-    ctx.stroke();
-    ctx.globalAlpha = baseA;
-  } else {
-    pathO(ctx, e.x, e.y, cr);
-    ctx.stroke();
-  }
+  const pulse = 1 + Math.sin(e.age * 9) * 0.12;
+  pathO(ctx, e.x, e.y, e.r * 0.62 * pulse);
+  ctx.fill();
 
-  // A second O inside says "there is more in here".
-  if (e.type === 'splitter') {
-    ctx.globalAlpha = baseA * 0.7;
-    ctx.lineWidth = 1.2 * S;
-    pathO(ctx, e.x, e.y, cr * 0.5);
-    ctx.stroke();
-    ctx.globalAlpha = baseA;
-  }
-
-  // The runner's patience, draining away.
-  if (e.type === 'runner' && e.ttl !== Infinity) {
-    const k = Math.max(0, Math.min(1, e.ttl / 9));
-    ctx.globalAlpha = baseA * 0.45;
-    ctx.lineWidth = 1.2 * S;
-    ctx.beginPath();
-    ctx.arc(e.x, e.y, e.r * 1.5, -Math.PI / 2, -Math.PI / 2 + TAU * k);
-    ctx.stroke();
-    ctx.globalAlpha = baseA;
-  }
+  ctx.globalAlpha = baseA * 0.4;
+  ctx.lineWidth = 1.2 * S;
+  pathO(ctx, e.x, e.y, e.r * (0.7 + ((e.age * 1.6) % 1) * 0.6));
+  ctx.stroke();
+  ctx.globalAlpha = baseA;
 
   if (e.type === 'drifter' && (e.vx || e.vy)) {
     const m = Math.hypot(e.vx, e.vy) || 1;
-    ctx.globalAlpha = baseA * 0.35;
+    ctx.globalAlpha = baseA * 0.4;
+    ctx.lineWidth = 1.5 * S;
     ctx.beginPath();
     ctx.moveTo(e.x, e.y);
-    ctx.lineTo(e.x - (e.vx / m) * e.r * 1.7, e.y - (e.vy / m) * e.r * 1.7);
+    ctx.lineTo(e.x - (e.vx / m) * e.r * 1.9, e.y - (e.vy / m) * e.r * 1.9);
     ctx.stroke();
     ctx.globalAlpha = baseA;
   }
