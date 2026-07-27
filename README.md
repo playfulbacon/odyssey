@@ -157,23 +157,27 @@ Add the page to your home screen for a fullscreen, chrome-free run.
 ### Testing on a desktop
 
 The whole thing is playable from the keyboard, and one person can drive both
-sides. **Moving is holding**: a direction key counts as a finger on the glass,
-and letting go of it lifts — so the line ghosts as soon as neither paddle is
-being driven, without holding a modifier down.
+sides. A finger does two jobs at once when it comes off the glass — it ends the
+touch *and* shoves the ball — and on a keyboard those are split across two keys:
 
-| | slide | hold still |
+| | slide | boost |
 |---|---|---|
 | Bottom player | <kbd>A</kbd> <kbd>D</kbd> | <kbd>S</kbd> |
 | Top player | <kbd>J</kbd> <kbd>L</kbd> | <kbd>K</kbd> |
 
-The hold keys cover the one thing moving cannot express — staying put without
-lifting — which is what the boost rhythm needs.
+**Steering keeps your side down.** Park both paddles and the line ghosts — and
+that is all parking does; letting go of a direction key never shoves the ball.
+**The shove is a tap of the boost key**, which also holds your side down without
+moving it. So you can line a phantom up, stop, and let the ghosted line saw
+through it without launching anything by accident.
+
+The mouse works as a single player and does both jobs at once, like a finger.
 
 <kbd>Esc</kbd> pauses. The mouse also works as a single player. On a wide window
 the field is letterboxed to a phone aspect ratio so it plays the same.
 
 ```sh
-npm test     # rules tests + a recording-canvas check that the picture matches
+npm test     # rules, input model, and a recording-canvas check on the picture
 npm run check
 ```
 

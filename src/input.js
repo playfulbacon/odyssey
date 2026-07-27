@@ -9,11 +9,15 @@
 // because the whole boost mechanic is built on lifting and replacing fingers.
 //
 // Keyboard and mouse fall back to the same model so the prototype is testable
-// on a desktop. On a keyboard, *moving is holding*: a direction key counts as a
-// finger on the glass and letting go of it lifts, so the line ghosts as soon as
-// neither paddle is being driven. That is a testing affordance, not the real
-// control scheme — but it means one person can drive both sides with two hands
-// and never has to hold a modifier down.
+// on a desktop, with one deliberate split that a finger cannot make. On a
+// keyboard the two halves of "lifting" are separate keys:
+//   direction keys steer, and whether one is down decides whether the line is
+//     ghosted — so stopping both paddles ghosts the line, and that is all it
+//     does. Letting go of a direction key never shoves the ball.
+//   the hold key is the finger. It keeps your side down without moving it, and
+//     letting go of it is what boosts.
+// So one person can drive both sides with two hands, park them to ghost, and
+// still fire a boost exactly when they mean to.
 
 import { CFG } from './config.js';
 
@@ -30,8 +34,10 @@ function makePlayer(nx) {
     keyLeft: false,
     keyRight: false,
     keyHold: false,
+    heldByKey: false,   // was the hold key down last frame?
     justReleased: false,
     justPressed: false,
+    justBoosted: false,
   };
 }
 
@@ -56,8 +62,8 @@ export class Input {
     for (const p of [this.a, this.b]) {
       p.nx = 0.5; p.anchorNx = 0.5;
       p.touching = false; p.boostT = 0; p.pointerId = null;
-      p.keyLeft = p.keyRight = p.keyHold = false;
-      p.justReleased = p.justPressed = false;
+      p.keyLeft = p.keyRight = p.keyHold = p.heldByKey = false;
+      p.justReleased = p.justPressed = p.justBoosted = false;
     }
   }
 
@@ -68,8 +74,8 @@ export class Input {
       p.touching = false;
       p.boostT = 0;
       p.pointerId = null;
-      p.keyLeft = p.keyRight = p.keyHold = false;
-      p.justReleased = p.justPressed = false;
+      p.keyLeft = p.keyRight = p.keyHold = p.heldByKey = false;
+      p.justReleased = p.justPressed = p.justBoosted = false;
     }
   }
 
@@ -88,12 +94,20 @@ export class Input {
     if (this.onFirstTouch) this.onFirstTouch();
   }
 
-  release(p) {
+  // A finger coming off the glass both ends the touch and shoves the ball. On a
+  // keyboard those are two different keys, so `boost` lets the caller take the
+  // touch away without the shove.
+  release(p, boost = true) {
     if (!p.touching) return;
     p.touching = false;
-    p.boostT = this.boostDur;
     p.justReleased = true;
     p.pointerId = null;
+    if (boost) this.boost(p);
+  }
+
+  boost(p) {
+    p.boostT = this.boostDur;
+    p.justBoosted = true;
   }
 
   _playerFor(id) {
@@ -165,8 +179,8 @@ export class Input {
 
     window.addEventListener('blur', () => {
       for (const p of [this.a, this.b]) {
-        p.keyLeft = p.keyRight = p.keyHold = false;
-        this.release(p);
+        p.keyLeft = p.keyRight = p.keyHold = p.heldByKey = false;
+        this.release(p, false);
       }
     });
   }
@@ -187,12 +201,19 @@ export class Input {
 
       if (p.pointerId === null) {
         const dir = (p.keyRight ? 1 : 0) - (p.keyLeft ? 1 : 0);
-        // Driving the paddle is what puts the finger down. The hold key is
-        // there for the one thing moving cannot express: staying put without
-        // lifting, which is what the boost rhythm needs.
+
+        // The hold key is the only thing that shoves. Its falling edge fires
+        // whether or not the paddle is also being steered.
+        if (p.keyHold) p.heldByKey = true;
+        else if (p.heldByKey) { p.heldByKey = false; this.boost(p); }
+
+        // Either key keeps the side down, but taking the touch away here never
+        // boosts — the line ghosting when you stop steering is a readout, not
+        // an action.
         const down = dir !== 0 || p.keyHold;
         if (down && !p.touching) this.press(p);
-        else if (!down && p.touching) this.release(p);
+        else if (!down && p.touching) this.release(p, false);
+
         if (dir) p.nx = clamp(p.nx + dir * 0.95 * dt, lo, hi);
       }
 
@@ -201,7 +222,8 @@ export class Input {
   }
 
   clearEdges() {
-    this.a.justReleased = this.a.justPressed = false;
-    this.b.justReleased = this.b.justPressed = false;
+    for (const p of [this.a, this.b]) {
+      p.justReleased = p.justPressed = p.justBoosted = false;
+    }
   }
 }

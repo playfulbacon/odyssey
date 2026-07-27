@@ -152,7 +152,7 @@ export class Game {
     this.input.update(dt);
     this.input.setBounds(this.paddleW / 2, this.W);
 
-    if (this.input.a.justReleased || this.input.b.justReleased) sfx.boost();
+    if (this.input.a.justBoosted || this.input.b.justBoosted) sfx.boost();
 
     // Keep the ball's screen position current even while parked, so spawn
     // spacing has something honest to measure against.
