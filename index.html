@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#08090b" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="description" content="ODYSSEY — a two-player co-op line-pong prototype for one phone." />
+<title>ODYSSEY</title>
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+<div id="app">
+  <canvas id="stage"></canvas>
+
+  <button id="pause-btn" class="corner-btn" type="button" aria-label="Pause" hidden>| |</button>
+
+  <!-- ══ TITLE ══ -->
+  <section class="screen" id="screen-title">
+    <div class="panel">
+      <h1 class="logo">ODYSSEY</h1>
+      <p class="tagline">two players · one phone · one line</p>
+      <div class="stack">
+        <button class="btn primary" data-act="start-run">START RUN</button>
+        <button class="btn" data-act="open-playground">PLAYGROUND</button>
+        <button class="btn ghost" data-act="open-help">HOW TO PLAY</button>
+      </div>
+      <p class="foot"><span id="best-line">best — 0</span> · <button class="link" data-act="toggle-mute" id="mute-btn">sound on</button></p>
+    </div>
+  </section>
+
+  <!-- ══ HELP ══ -->
+  <section class="screen" id="screen-help">
+    <div class="panel scroll">
+      <h2>HOW TO PLAY</h2>
+      <p class="lede">Lay the phone flat between you, held vertically. One player sits at each end. You each own the half of the screen nearest you.</p>
+
+      <h3>THE LINE</h3>
+      <p>A paddle sits at each end of the screen. A line is stretched between them and the ball runs back and forth along it. <b>Slide your finger anywhere on your half</b> to move your paddle — the line swings with it. Steer the line so the ball crosses what you want to hit.</p>
+
+      <h3>BOOST</h3>
+      <p><b>Lift your finger</b> to shove the ball away from you. For a moment it flies. If the ball is heading toward you instead, the same lift drags it to a crawl. If you both lift at once the two shoves cancel and the ball keeps its normal pace.</p>
+      <p>While your finger is off the screen your half of the line fades — and your paddle is frozen where you left it.</p>
+
+      <h3>COLLECTABLES</h3>
+      <p>Each one wears a shield. Every pass of the ball strips <b>ball power</b> from it. Once the shield is gone the core is exposed — touch it again to bank it.</p>
+
+      <h3>OBSTACLES</h3>
+      <p>Touch one the wrong way and you lose a life. Some can be broken instead, and they pay far better than collectables:</p>
+      <ul class="ticks">
+        <li><b>BRITTLE</b> — only takes damage from a <i>boosted</i> ball.</li>
+        <li><b>PHANTOM</b> — only takes damage while <i>both</i> fingers are off the screen.</li>
+        <li><b>PULSAR</b> — deadly while lit, breakable while dark.</li>
+        <li><b>SLAB</b> and <b>ROTOR</b> — no way through. Just don't.</li>
+      </ul>
+
+      <h3>LAUNCHING</h3>
+      <p>At the start of a run, and after every lost life, <b>both players hold their half</b> until the bar fills.</p>
+
+      <h3>RUNS</h3>
+      <p>Every run gives you a clock and a score to beat. Clear it and spend your points on upgrades before the next one. Each run the obstacles get meaner. Miss the target — or burn every life — and the game ends.</p>
+
+      <h3>DESKTOP KEYS</h3>
+      <p class="keys">Bottom player — <kbd>S</kbd> hold, <kbd>A</kbd>&nbsp;<kbd>D</kbd> slide.<br />
+      Top player — <kbd>K</kbd> hold, <kbd>J</kbd>&nbsp;<kbd>L</kbd> slide.<br />
+      The mouse also works as one player. You only move while holding.</p>
+
+      <div class="stack">
+        <button class="btn" data-act="back-title">BACK</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ PLAYGROUND MENU ══ -->
+  <section class="screen" id="screen-playground">
+    <div class="panel scroll">
+      <h2>PLAYGROUND</h2>
+      <p class="lede">No clock. No target. Endless lives. Pick a piece and learn it.</p>
+      <h3 class="sec">COLLECTABLES</h3>
+      <div class="cards" id="pg-collectables"></div>
+      <h3 class="sec">OBSTACLES</h3>
+      <div class="cards" id="pg-obstacles"></div>
+      <div class="stack">
+        <button class="btn" data-act="back-title">BACK</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ RUN BRIEF ══ -->
+  <section class="screen" id="screen-brief">
+    <div class="panel">
+      <p class="eyebrow" id="brief-eyebrow">RUN 1</p>
+      <h2 id="brief-title">REACH 1200</h2>
+      <div class="statgrid" id="brief-stats"></div>
+      <p class="lede" id="brief-note"></p>
+      <div class="stack">
+        <button class="btn primary" data-act="begin-run">BEGIN</button>
+        <button class="btn ghost" data-act="abandon">ABANDON</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ SHOP ══ -->
+  <section class="screen" id="screen-shop">
+    <div class="panel scroll">
+      <p class="eyebrow" id="shop-eyebrow">RUN CLEARED</p>
+      <h2>UPGRADES</h2>
+      <div class="statgrid" id="shop-summary"></div>
+      <p class="wallet">BANK <b id="shop-wallet">0</b></p>
+      <div class="cards" id="shop-list"></div>
+      <div class="stack">
+        <button class="btn primary" data-act="next-run">NEXT RUN</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ RESULT ══ -->
+  <section class="screen" id="screen-result">
+    <div class="panel">
+      <p class="eyebrow" id="result-eyebrow">GAME OVER</p>
+      <h2 id="result-title">OUT OF TIME</h2>
+      <div class="statgrid" id="result-stats"></div>
+      <div class="stack">
+        <button class="btn primary" data-act="start-run">RUN IT BACK</button>
+        <button class="btn ghost" data-act="back-title">MENU</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ PAUSE ══ -->
+  <section class="screen" id="screen-pause">
+    <div class="panel">
+      <h2>PAUSED</h2>
+      <div class="statgrid" id="pause-stats"></div>
+      <div class="stack">
+        <button class="btn primary" data-act="resume">RESUME</button>
+        <button class="btn ghost" data-act="quit">QUIT TO MENU</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

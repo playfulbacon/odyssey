@@ -1,0 +1,12 @@
+{
+  "name": "odyssey",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A two-player co-op line-pong prototype for a single phone.",
+  "scripts": {
+    "start": "npx --yes http-server . -p 8080 -c-1 -o",
+    "check": "node --check src/main.js && node --check src/game.js && node --check src/render.js && node --check src/entities.js && node --check src/input.js && node --check src/ui.js && node --check src/config.js && node --check src/audio.js",
+    "test": "node --test test/*.test.js"
+  }
+}
