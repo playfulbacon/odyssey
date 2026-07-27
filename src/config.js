@@ -62,7 +62,7 @@ export const UPGRADES = [
   },
   {
     id: 'power', name: 'BALL POWER', base: 1150, growth: 2.05, max: 8,
-    desc: 'Heavier ball. More armour stripped from an obstacle per boosted pass.',
+    desc: 'Heavier ball. More shield layers stripped from an obstacle per good pass.',
     show: (l) => `power ${CFG.base.power + l}`,
   },
   {
@@ -72,7 +72,7 @@ export const UPGRADES = [
   },
   {
     id: 'boost', name: 'LONG BOOST', base: 760, growth: 1.72, max: 6,
-    desc: '+12% boost duration. Longer window to punch through brittle armour.',
+    desc: '+12% boost duration. A longer window in which the ball can strip a boost shield.',
     show: (l) => `+${l * 12}% boost`,
   },
 ];
@@ -114,7 +114,7 @@ export function difficulty(run) {
     maxObstacles: Math.min(7, 1 + Math.round(k * 0.8)),
     obstacleGap: Math.max(1.5, 4.6 - k * 0.32),      // seconds between spawns
     obstacleTtl: Math.max(9, 18 - k * 0.7),          // how long one sticks around
-    armourBonus: Math.floor(k * 0.4),                // added to a breakable obstacle's hp
+    shieldBonus: Math.floor(k * 0.4),                // extra layers on a breakable obstacle
     ballSpeed: 1 + Math.min(0.55, k * 0.055),
     entitySpeed: 1 + k * 0.11,
     valueScale: 1 + k * 0.26,

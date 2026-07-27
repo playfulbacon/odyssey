@@ -3,7 +3,7 @@
 // Two families:
 //   cls 'col' — collectables. Touch one and it is banked. That is all.
 //   cls 'obs' — obstacles. Lethal unless you meet their gate, and the only
-//               things in the game that wear armour.
+//               things in the game that wear a shield.
 //
 // Every entity is collided against as a circle except SLAB (a rectangle) and
 // ROTOR (a hub plus swept arms).
@@ -21,21 +21,21 @@
 //   warm  obstacle. Hue is *not* identity: it names the gate, the one thing
 //         that gets you past it. Two obstacles with the same gate share a hue.
 //
-// Two colours belong to neither family, and they are the two that carry rules:
-//   RING   violet. The boosted ball, and every ring of obstacle armour. A ring
-//          means one thing wherever you see it: a boosted ball takes it off.
-//          Collectables never wear one — you just touch them.
-//   INK    the ball at rest, the paddles, a held half of the line.
+// Every breakable obstacle wears a shield, and the shield says what opens it —
+// see SHIELDS. There are two kinds and they look nothing alike:
+//   boost shield  violet, solid. The colour the ball turns while boosting, and
+//                 a boosted ball is what strips it.
+//   ghost shield  gold, dotted. The exact treatment a half of the line takes on
+//                 when nobody is holding it, and a ghosted line is what strips
+//                 it. See handsOffStroke() in render.js — one definition, worn
+//                 by the released line and by the shield alike.
 //
-// And the line itself is the readout for the one state the ball does not wear:
-// a half you are not touching breaks into a faded gold dotted line, and both
-// halves dotted means the PHANTOM is open. The phantom wears that same faded
-// gold dotted outline, and brightens on the same cue, because it is the same
-// idea drawn twice. See lineColorFor() and handsOffStroke() in render.js.
+// INK is the rest: the ball at its normal pace, the paddles, a held half of the
+// line.
 
 export const PALETTE = {
   ink: '#e9ecef',
-  ring: '#b98cff',
+  ring: '#b98cff',   // the boosted ball, and the shield only it can strip
 };
 
 // Warm. The key is the gate an obstacle carries, so an obstacle cannot be given
@@ -51,6 +51,21 @@ export const GATES = {
 export const COOL = {
   mint: '#8ef0d0',
   blue: '#48a8f0',
+};
+
+// The two shields. A shield is broken by the state it is drawn in: violet is
+// the boosted ball, dotted gold is a line nobody is holding.
+export const SHIELDS = {
+  boost: {
+    key: 'boost', color: PALETTE.ring, dotted: false,
+    label: 'a boosted ball',
+    breaks: (w) => !!w.boosted,
+  },
+  ghost: {
+    key: 'ghost', color: GATES.handsOff.color, dotted: true,
+    label: 'a ghosted line — both fingers off the glass',
+    breaks: (w) => !!w.handsOff,
+  },
 };
 
 export const isWarm = (c) => Object.values(GATES).some((g) => g.color === c);
@@ -86,13 +101,16 @@ export const COLLECTABLES = {
   },
 };
 
-// `gate` is the whole obstacle. It decides when the thing is lethal, and it
-// decides what colour the thing is — see colorOfGate below.
+// An obstacle is two things: a `gate`, which decides when it is lethal and
+// therefore what colour it wears, and a `shield`, which decides what strips a
+// layer. For BRITTLE and PHANTOM those are the same condition — if it is safe
+// to touch, the touch counts. The PULSAR is the one that separates them: a
+// timing gate over a boost shield.
 export const OBSTACLES = {
   slab: {
     key: 'slab', cls: 'obs', label: 'SLAB', gate: 'never',
     value: 0, hp: 0,
-    blurb: 'Red, and no rings on it — nothing to break and no state that opens it. Move the line around it.',
+    blurb: 'Red, and no shield on it — nothing to strip and no state that opens it. Move the line around it.',
     hint: 'Pure avoidance. Costs a life every time.',
   },
   rotor: {
@@ -102,21 +120,21 @@ export const OBSTACLES = {
     hint: 'Cross behind it, never alongside it.',
   },
   brittle: {
-    key: 'brittle', cls: 'obs', label: 'BRITTLE', gate: 'boosted',
+    key: 'brittle', cls: 'obs', label: 'BRITTLE', gate: 'boosted', shield: 'boost',
     value: 430, hp: 3, r: 20,
-    blurb: 'Orange: only a boosted ball survives the contact, and only a boosted ball takes its armour off. Arrive at normal pace and it costs a life.',
+    blurb: 'Orange, behind a violet boost shield. Only a boosted ball survives the contact and only a boosted ball strips a layer; arrive at normal pace and it costs a life.',
     hint: 'Take turns lifting so the ball is violet in both directions.',
   },
   phantom: {
-    key: 'phantom', cls: 'obs', label: 'PHANTOM', gate: 'handsOff',
-    value: 700, hp: 1, r: 22, armourGrows: false,
-    blurb: 'A dotted gold outline — the same faded dotted gold your half of the line turns the moment you let go. Both of you off the glass and it brightens and turns harmless; a boosted ball in that same window destroys it outright.',
-    hint: 'Aim first. One of you lifts, then the other, before the shove dies.',
+    key: 'phantom', cls: 'obs', label: 'PHANTOM', gate: 'handsOff', shield: 'ghost',
+    value: 700, hp: 2, r: 22, shieldGrows: false,
+    blurb: 'The same shield idea with a different key: dotted gold instead of violet, stripped by a ghosted line instead of a boosted ball. Let go together and the whole line goes dotted gold to match — that is when a pass strips a layer. A finger on the glass and it costs a life.',
+    hint: 'Aim first. Once you both let go neither paddle moves, so the line has to already be right.',
   },
   pulsar: {
-    key: 'pulsar', cls: 'obs', label: 'PULSAR', gate: 'dark',
+    key: 'pulsar', cls: 'obs', label: 'PULSAR', gate: 'dark', shield: 'boost',
     value: 340, hp: 2, r: 19, rDark: 10, period: 2.4, duty: 0.55,
-    blurb: 'Lit and wide it is lethal; dark and small it is inert. Boost through it during a dark window to strip the armour.',
+    blurb: 'A boost shield behind a timing window. Lit and wide it is lethal; dark and small it is inert, and that is when a boosted pass strips a layer.',
     hint: 'Watch the flicker just before it lights — that is your warning.',
   },
 };
@@ -174,7 +192,8 @@ export function makeObstacle(type, x, y, S, diff, rng = Math.random) {
   const def = OBSTACLES[type];
   const e = base(def, x, y, S);
   e.gate = def.gate;
-  e.hpMax = def.hp ? def.hp + (def.armourGrows === false ? 0 : diff.armourBonus) : 0;
+  e.shield = def.shield || null;
+  e.hpMax = def.hp ? def.hp + (def.shieldGrows === false ? 0 : diff.shieldBonus) : 0;
   e.hp = e.hpMax;
   e.value = Math.round(def.value * diff.valueScale);
   e.ttl = diff.obstacleTtl;
@@ -305,14 +324,19 @@ export function isLethal(e, world) {
   }
 }
 
+// Does this pass strip a layer? Each shield is broken by the state it is drawn
+// in, so the picture is the rule.
+export function shieldBreaks(e, world) {
+  const s = SHIELDS[e.shield];
+  return !!s && s.breaks(world);
+}
+
 // How a contact resolves.
 //   'kill'   — the players lose a life
-//   'damage' — a ring comes off
+//   'damage' — a layer comes off the shield
 //   'pass'   — the ball goes through and nothing happens
-//
-// Only a boosted ball takes a ring off.
 export function resolveObstacle(e, world) {
   if (isLethal(e, world)) return 'kill';
-  return world.boosted && e.hp > 0 ? 'damage' : 'pass';
+  return e.hp > 0 && shieldBreaks(e, world) ? 'damage' : 'pass';
 }
 

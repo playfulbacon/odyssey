@@ -2,7 +2,7 @@
 // The UI never touches the simulation directly — it calls back into App.
 
 import { CFG, UPGRADES, upgradeCost, derived, difficulty } from './config.js';
-import { COLLECTABLES, OBSTACLES, GATES } from './entities.js';
+import { COLLECTABLES, OBSTACLES, GATES, SHIELDS } from './entities.js';
 import { sfx } from './audio.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -89,13 +89,16 @@ export class UI {
         card.type = 'button';
         const glyph = d.cls === 'col' ? 'O' : 'X';
         const pay = d.value ? `${d.value} pts` : 'no points';
-        const meta = `${d.hp ? `${d.hp} ring${d.hp === 1 ? '' : 's'} · ` : ''}${pay}`;
+        const sh = SHIELDS[d.shield];
+        const meta = `${d.hp ? `${d.hp}-layer ${sh.key} shield · ` : ''}${pay}`;
         const need = d.cls === 'col' ? 'any touch at all' : GATES[d.gate].label;
         card.innerHTML =
           `<div class="row"><span class="nm"><i class="glyph" style="color:${d.color}">${glyph}</i>${d.label}</span>` +
           `<span class="meta">${meta}</span></div>` +
           `<div class="bl">${d.blurb}</div>` +
-          `<div class="bl need">safe to touch with — ${need}</div>` +
+          `<div class="bl need">safe to touch with — ${need}` +
+          (sh ? `<br />shield stripped by — <span style="color:${sh.color}">${sh.label}</span>` : '') +
+          `</div>` +
           `<div class="bl" style="opacity:.62">${d.hint}</div>`;
         card.addEventListener('click', () => this.app.startPlayground(d.key));
         host.appendChild(card);

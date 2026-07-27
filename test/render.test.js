@@ -51,15 +51,15 @@ function stubInput(aTouch, bTouch) {
   };
 }
 
-// A live playground with one phantom sitting in the middle of the field.
-function frame(aTouch, bTouch) {
+// A live playground with one obstacle sitting in the middle of the field.
+function frameWith(type, aTouch, bTouch) {
   const input = stubInput(aTouch, bTouch);
   const g = new Game({}, input, {});
   g.resize(400, 800, 1);
-  g.startPlayground('phantom');
+  g.startPlayground(type);
   g.phase = 'play';
   g.entities.length = 0;
-  const e = makeObstacle('phantom', 200, 400, 1, difficulty(1));
+  const e = makeObstacle(type, 200, 400, 1, difficulty(1));
   e.spawnT = 0;
   g.entities.push(e);
 
@@ -68,30 +68,47 @@ function frame(aTouch, bTouch) {
   return ops;
 }
 
-// Gold outlines: the released line halves and the phantom's ring. The X inside
-// the phantom is gold too but deliberately stays solid — dotting away the
-// family glyph would cost more legibility than the consistency is worth — so
-// the invariant is about the dotted set, not about every gold pixel.
+const frame = (a, b) => frameWith('phantom', a, b);
+
+// Gold dotted strokes: the released line halves and the phantom's ghost shield.
+// The X inside the phantom is gold too but deliberately stays solid — dotting
+// away the family glyph would cost more legibility than the consistency is
+// worth — so the invariant is about the dotted set, not every gold pixel.
 const goldDotted = (ops) =>
   ops.filter((o) => o.op === 'stroke' && o.strokeStyle === GOLD && o.dash.length > 0);
 
-test('the phantom is drawn dotted whoever is holding', () => {
+test("the phantom's shield is drawn dotted whoever is holding", () => {
   // With both players holding, the only gold dotted thing on screen is the
-  // phantom — the line halves are ink. It never appears solid.
+  // shield — the line halves are ink. It never appears solid.
   assert.ok(goldDotted(frame(true, true)).length >= 1, 'both holding');
-  assert.ok(goldDotted(frame(true, false)).length >= 2, 'one released half plus the phantom');
-  assert.ok(goldDotted(frame(false, true)).length >= 2, 'the other half plus the phantom');
-  assert.ok(goldDotted(frame(false, false)).length >= 3, 'both halves plus the phantom');
+  assert.ok(goldDotted(frame(true, false)).length >= 2, 'one released half plus the shield');
+  assert.ok(goldDotted(frame(false, true)).length >= 2, 'the other half plus the shield');
+  assert.ok(goldDotted(frame(false, false)).length >= 3, 'both halves plus the shield');
 });
 
-test('a released half of the line and the phantom are drawn the same way', () => {
-  // Nobody holding: two line halves plus the phantom outline, identical dash,
-  // identical weight, identical cap.
+test('a released half of the line and a ghost shield are drawn the same way', () => {
+  // Nobody holding: two line halves plus every layer of the shield, identical
+  // dash, identical weight, identical cap. This is the claim the whole idea
+  // rests on — the shield is not *like* a ghosted line, it is one.
   const ops = goldDotted(frame(false, false));
-  assert.ok(ops.length >= 3, `expected the two line halves and the phantom, got ${ops.length}`);
+  assert.ok(ops.length >= 3, `expected the line halves and the shield, got ${ops.length}`);
 
   const shapes = new Set(ops.map((o) => `${o.dash.join(',')}|${o.lineWidth}|${o.lineCap}`));
   assert.equal(shapes.size, 1, `they should be one treatment, found ${[...shapes].join('  /  ')}`);
+});
+
+test('a phantom wears no violet at all — its shield is the only ring it has', () => {
+  for (const [a, b] of [[true, true], [false, false]]) {
+    const violet = frame(a, b).filter((o) => o.op === 'stroke' && o.strokeStyle === PALETTE.ring);
+    assert.equal(violet.length, 0, 'the ghost shield replaced the armour, it did not join it');
+  }
+});
+
+test('a boost shield stays violet and solid, so the two never blur together', () => {
+  const ops = frameWith('brittle', false, false)
+    .filter((o) => o.op === 'stroke' && o.strokeStyle === PALETTE.ring);
+  assert.ok(ops.length >= 3, 'three layers of boost shield');
+  for (const o of ops) assert.equal(o.dash.length, 0, 'a boost shield is never dotted');
 });
 
 test('the treatment fades until the state is actually live, then brightens', () => {
@@ -109,12 +126,6 @@ test('a held half of the line is solid ink, not gold and not dotted', () => {
   const ops = frame(true, true).filter((o) => o.op === 'stroke' && o.strokeStyle === PALETTE.ink);
   assert.ok(ops.length >= 2, 'both halves held');
   for (const o of ops) assert.equal(o.dash.length, 0, 'a held half must be solid');
-});
-
-test('armour stays violet and solid, so a ring never reads as hands-off', () => {
-  for (const o of frame(false, false).filter((x) => x.op === 'stroke' && x.strokeStyle === PALETTE.ring)) {
-    assert.equal(o.dash.length, 0);
-  }
 });
 
 test('the run HUD renders without touching anything undefined', () => {

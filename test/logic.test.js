@@ -7,9 +7,9 @@ import assert from 'node:assert/strict';
 
 import { CFG, UPGRADES, upgradeCost, derived, difficulty, emptyUpgrades } from '../src/config.js';
 import {
-  PALETTE, GATES, COOL, COLLECTABLES, OBSTACLES,
+  PALETTE, GATES, COOL, SHIELDS, COLLECTABLES, OBSTACLES,
   isWarm, isCool, ballColorFor, lineColorFor, stateColorOf,
-  isLethal, resolveObstacle,
+  isLethal, resolveObstacle, shieldBreaks,
   makeCollectable, makeObstacle, hitTest, updateEntity,
 } from '../src/entities.js';
 import { Game } from '../src/game.js';
@@ -170,87 +170,85 @@ test('run 1 is motes alone; the moving one arrives on run 2', () => {
   assert.deepEqual(difficulty(9).collectPool, ['mote', 'drifter']);
 });
 
-// ── armour ──────────────────────────────────────────────────────────────────
+// ── shields ─────────────────────────────────────────────────────────────────
+//
+// Two kinds, same idea: a shield is stripped by the state it is drawn in. The
+// violet one wants the boosted ball; the dotted gold one wants a ghosted line.
 
-test('a ring only comes off a boosted ball', () => {
+test('a shield is broken by exactly the state it is drawn in', () => {
+  assert.equal(SHIELDS.boost.color, PALETTE.ring, 'the colour the ball turns while boosting');
+  assert.equal(SHIELDS.ghost.color, GATES.handsOff.color, 'the colour a released half of the line turns');
+
   for (const w of WORLDS) {
-    const brittle = makeObstacle('brittle', 0, 0, 1, D1);
-    if (!isLethal(brittle, w)) {
-      assert.equal(resolveObstacle(brittle, w), w.boosted ? 'damage' : 'pass', `brittle, ${w.name}`);
-    }
-    const pulsar = makeObstacle('pulsar', 0, 0, 1, D1);
-    pulsar.armed = false;
-    assert.equal(resolveObstacle(pulsar, w), w.boosted ? 'damage' : 'pass', `dark pulsar, ${w.name}`);
+    assert.equal(SHIELDS.boost.breaks(w), w.boosted);
+    assert.equal(SHIELDS.ghost.breaks(w), w.handsOff);
   }
 });
 
-test('ball power decides how much armour a single boosted pass takes', () => {
+test('every breakable obstacle names a shield, and unbreakable ones name none', () => {
+  for (const d of Object.values(OBSTACLES)) {
+    if (d.hp) assert.ok(SHIELDS[d.shield], `${d.key} has layers but no shield kind`);
+    else assert.equal(d.shield, undefined, `${d.key} has no layers, so it should have no shield`);
+  }
+});
+
+test('a boost shield only comes off a boosted ball', () => {
+  for (const key of ['brittle', 'pulsar']) {
+    const e = makeObstacle(key, 0, 0, 1, D1);
+    e.armed = false;                       // put the pulsar in its open window
+    assert.equal(e.shield, 'boost');
+    for (const w of WORLDS) {
+      if (isLethal(e, w)) continue;
+      assert.equal(resolveObstacle(e, w), w.boosted ? 'damage' : 'pass', `${key}, ${w.name}`);
+    }
+  }
+});
+
+test('a ghost shield only comes off a ghosted line, and asks nothing about boost', () => {
+  const e = makeObstacle('phantom', 0, 0, 1, D1);
+  assert.equal(e.shield, 'ghost');
+
+  // Someone is holding: lethal, whatever the ball is doing.
+  assert.equal(resolveObstacle(e, { boosted: false, handsOff: false }), 'kill');
+  assert.equal(resolveObstacle(e, { boosted: true, handsOff: false }), 'kill');
+
+  // Both let go: a layer comes off, and boosting is neither needed nor a bonus.
+  assert.equal(resolveObstacle(e, { boosted: false, handsOff: true }), 'damage');
+  assert.equal(resolveObstacle(e, { boosted: true, handsOff: true }), 'damage');
+});
+
+test('the phantom is a shield, not armour behind one', () => {
+  const e = makeObstacle('phantom', 0, 0, 1, D1);
+  assert.ok(e.hpMax >= 2, 'it takes more than one pass');
+  // Whatever strips it is the same thing that makes it safe to touch, so there
+  // is never a pass that is safe but useless.
+  for (const w of WORLDS) {
+    assert.equal(isLethal(e, w), !shieldBreaks(e, w), `phantom, ${w.name}`);
+  }
+});
+
+test('the pulsar is the one piece whose gate and shield differ', () => {
+  const e = makeObstacle('pulsar', 0, 0, 1, D1);
+  e.armed = false;
+  const w = { boosted: false, handsOff: false };
+  assert.equal(isLethal(e, w), false, 'a dark pulsar is safe to touch');
+  assert.equal(shieldBreaks(e, w), false, 'but a plain ball still strips nothing');
+  assert.equal(resolveObstacle(e, w), 'pass');
+});
+
+test("a phantom's shield never grows, however deep the run", () => {
+  assert.equal(makeObstacle('phantom', 0, 0, 1, difficulty(1)).hpMax,
+               makeObstacle('phantom', 0, 0, 1, difficulty(12)).hpMax);
+  assert.ok(makeObstacle('brittle', 0, 0, 1, difficulty(12)).hpMax > OBSTACLES.brittle.hp);
+});
+
+test('ball power decides how much shield a single good pass takes', () => {
   const g = mkGame();
   g.power = 3;
   const e = makeObstacle('brittle', 200, 400, 1, D1);
   assert.equal(e.hp, 3);
   g._damageObstacle(e);
   assert.equal(e.dead, true, 'a heavy enough ball ends it in one pass');
-});
-
-// ── gates ───────────────────────────────────────────────────────────────────
-
-test('red gates are lethal in every state', () => {
-  for (const type of ['slab', 'rotor']) {
-    const e = makeObstacle(type, 100, 100, 1, D1);
-    assert.equal(e.color, GATES.never.color);
-    for (const w of WORLDS) {
-      assert.equal(resolveObstacle(e, w), 'kill', `${type}, ${w.name}`);
-    }
-  }
-});
-
-test('orange is lethal to anything but a boosted ball', () => {
-  const e = makeObstacle('brittle', 100, 100, 1, D1);
-  assert.equal(resolveObstacle(e, { boosted: false, handsOff: false }), 'kill');
-  assert.equal(resolveObstacle(e, { boosted: false, handsOff: true }), 'kill');
-  assert.equal(resolveObstacle(e, { boosted: true, handsOff: false }), 'damage');
-  assert.equal(resolveObstacle(e, { boosted: true, handsOff: true }), 'damage');
-});
-
-test('gold is lethal unless both fingers are off, and only then can it be broken', () => {
-  const e = makeObstacle('phantom', 100, 100, 1, D1);
-  assert.equal(resolveObstacle(e, { boosted: false, handsOff: false }), 'kill');
-  assert.equal(resolveObstacle(e, { boosted: true, handsOff: false }), 'kill');
-  // Safe to coast through with both hands off...
-  assert.equal(resolveObstacle(e, { boosted: false, handsOff: true }), 'pass');
-  // ...and destroyed by a boost that is still alive in that same window.
-  assert.equal(resolveObstacle(e, { boosted: true, handsOff: true }), 'damage');
-});
-
-test('a phantom dies to one boosted pass and its armour never grows', () => {
-  const e1 = makeObstacle('phantom', 0, 0, 1, difficulty(1));
-  const e9 = makeObstacle('phantom', 0, 0, 1, difficulty(9));
-  assert.equal(e1.hpMax, 1);
-  assert.equal(e9.hpMax, 1, 'the double gate is already the hardest thing in the game');
-  assert.ok(makeObstacle('brittle', 0, 0, 1, difficulty(9)).hpMax > OBSTACLES.brittle.hp);
-});
-
-test('pink is lethal while lit and breakable while dark', () => {
-  const e = makeObstacle('pulsar', 100, 100, 1, D1);
-  e.armed = true;
-  for (const w of WORLDS) assert.equal(resolveObstacle(e, w), 'kill', `lit pulsar, ${w.name}`);
-  e.armed = false;
-  assert.equal(resolveObstacle(e, { boosted: false, handsOff: false }), 'pass');
-  assert.equal(resolveObstacle(e, { boosted: true, handsOff: false }), 'damage');
-});
-
-test('pulsar swaps its hit radius with its state', () => {
-  const e = makeObstacle('pulsar', 100, 100, 1, D1);
-  e.spawnT = 0;
-  e.phase = 0;                        // start of the lit window
-  updateEntity(e, 0.001, { x0: 0, x1: 400, y0: 0, y1: 800 });
-  assert.equal(e.armed, true);
-  const lit = e.r;
-  e.phase = e.period * e.duty + 0.01; // just gone dark
-  updateEntity(e, 0.001, { x0: 0, x1: 400, y0: 0, y1: 800 });
-  assert.equal(e.armed, false);
-  assert.ok(e.r < lit, 'dark pulsar should be smaller than lit');
 });
 
 // ── boost arithmetic ────────────────────────────────────────────────────────

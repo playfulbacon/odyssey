@@ -7,7 +7,7 @@
 
 import { CFG, difficulty, derived } from './config.js';
 import {
-  PALETTE, GATES, COLLECTABLES, OBSTACLES, makeCollectable, makeObstacle,
+  PALETTE, GATES, SHIELDS, COLLECTABLES, OBSTACLES, makeCollectable, makeObstacle,
   updateEntity, hitTest, resolveObstacle, stateColorOf, ballColorFor,
 } from './entities.js';
 import { sfx } from './audio.js';
@@ -299,7 +299,8 @@ export class Game {
   _damageObstacle(e) {
     e.hp -= this.power;
     e.flare = 1;
-    this._burst(e.x, e.y, PALETTE.ring, 8, 120);
+    // Chips come off in the shield's own colour, so you can see which key landed.
+    this._burst(e.x, e.y, SHIELDS[e.shield]?.color || PALETTE.ring, 8, 120);
     if (e.hp > 0) { sfx.crack(); this.shake = Math.max(this.shake, 2.5 * this.S); return; }
 
     e.dead = true;

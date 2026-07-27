@@ -4,12 +4,12 @@
 //   O and a cool hue = collectable; X and a warm hue = obstacle.
 //   The warm hue names the gate, so two obstacles that open the same way look
 //   the same. The cool hue is identity only.
-//   Violet is neither family: the boosted ball, and every ring of obstacle
-//   armour. Collectables wear no rings — touching one banks it.
-//   A half of the line you are not holding turns the PHANTOM's gold.
+//   Shields come in two kinds: violet and solid for a boost shield, dotted gold
+//   for a ghost shield. A ghost shield is drawn with the same handsOffStroke()
+//   as a half of the line nobody is holding, because that is what strips it.
 
 import { CFG } from './config.js';
-import { PALETTE, GATES, stateColorOf, ballColorFor, lineColorFor } from './entities.js';
+import { PALETTE, GATES, SHIELDS, stateColorOf, ballColorFor, lineColorFor } from './entities.js';
 
 const INK = PALETTE.ink;
 const RING = PALETTE.ring;
@@ -70,27 +70,43 @@ function pathX(ctx, x, y, r) {
   ctx.moveTo(x + k, y - k); ctx.lineTo(x - k, y + k);
 }
 
-// A ring of segments, one per point of armour left. Always violet, the same
-// colour the ball turns while boosting, because that is the only thing that
-// takes one off.
-function segRing(ctx, x, y, r, total, left, S, width = 2.5) {
+// A shield: one arc segment per layer left. How it is stroked comes from the
+// shield's own kind, so the ring always says what strips it — violet and solid
+// for a boost shield, dotted gold for a ghost shield.
+function segRing(ctx, x, y, r, total, left, setup) {
   if (!total) return;
-  const baseA = ctx.globalAlpha;
+  // save/restore, or the shield's stroke leaks onto the body drawn after it.
+  ctx.save();
+  setup(ctx);
+  const lit = ctx.globalAlpha;
   const gap = total > 1 ? 0.18 : 0;
   const span = TAU / total - gap;
-  // save/restore, or the violet leaks onto the warm body drawn after it.
-  ctx.save();
-  ctx.lineWidth = width * S;
-  ctx.lineCap = 'butt';
-  ctx.strokeStyle = RING;
   for (let i = 0; i < total; i++) {
     const a0 = -Math.PI / 2 + i * (TAU / total) + gap / 2;
-    ctx.globalAlpha = baseA * (i < left ? 0.95 : 0.12);
+    ctx.globalAlpha = lit * (i < left ? 1 : 0.13);
     ctx.beginPath();
     ctx.arc(x, y, r, a0, a0 + span);
     ctx.stroke();
   }
   ctx.restore();
+}
+
+// A boost shield is violet and solid, matching the ball that strips it. A ghost
+// shield borrows handsOffStroke outright, so it is not merely similar to a
+// released half of the line — it is the same call.
+function shieldStroke(e, g) {
+  const S = g.S;
+  if (e.shield === 'ghost') {
+    const live = g.input.handsOff && g.phase === 'play';
+    return (ctx) => handsOffStroke(ctx, S, live);
+  }
+  return (ctx) => {
+    ctx.strokeStyle = SHIELDS.boost.color;
+    ctx.globalAlpha *= 0.95;
+    ctx.lineWidth = 2.7 * S;
+    ctx.lineCap = 'butt';
+    ctx.setLineDash([]);
+  };
 }
 
 // ── entry point ─────────────────────────────────────────────────────────────
@@ -353,7 +369,7 @@ function drawObstacle(ctx, g, e) {
     }
 
     case 'brittle': {
-      segRing(ctx, e.x, e.y, e.r + 3 * S, e.hpMax, e.hp, S, 2.7);
+      segRing(ctx, e.x, e.y, e.r + 3 * S, e.hpMax, e.hp, shieldStroke(e, g));
       ctx.globalAlpha = baseA * 0.18;
       pathO(ctx, e.x, e.y, e.r * 0.78); ctx.fill();
       ctx.globalAlpha = baseA;
@@ -364,27 +380,23 @@ function drawObstacle(ctx, g, e) {
 
     case 'phantom': {
       const open = g.input.handsOff && g.phase === 'play';
-      segRing(ctx, e.x, e.y, e.r + 3 * S, e.hpMax, e.hp, S, 2.7);
+      // The dotted gold ring *is* the shield — there is no second outline. It
+      // is the same stroke a released half of the line wears, and it brightens
+      // on the same cue, because that is exactly the state that strips it.
+      segRing(ctx, e.x, e.y, e.r, e.hpMax, e.hp, shieldStroke(e, g));
       ctx.globalAlpha = baseA * (open ? 0.24 : 0.06);
-      pathO(ctx, e.x, e.y, e.r * 0.78); ctx.fill();
-      // The same dotted gold as a half of the line nobody is holding, and it
-      // brightens on exactly the same cue.
-      ctx.globalAlpha = baseA;
-      handsOffStroke(ctx, S, open);
-      pathO(ctx, e.x, e.y, e.r * 0.78); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.lineCap = 'butt';
+      pathO(ctx, e.x, e.y, e.r * 0.6); ctx.fill();
       // The X stays solid: dotting away the family glyph would cost more than
       // the consistency is worth.
       ctx.globalAlpha = baseA * (open ? 1 : 0.6);
       ctx.strokeStyle = col;
       ctx.lineWidth = 2 * S;
-      pathX(ctx, e.x, e.y, e.r * 0.5); ctx.stroke();
+      pathX(ctx, e.x, e.y, e.r * 0.46); ctx.stroke();
       break;
     }
 
     case 'pulsar': {
-      segRing(ctx, e.x, e.y, e.rBig + 6 * S, e.hpMax, e.hp, S, 2.7);
+      segRing(ctx, e.x, e.y, e.rBig + 6 * S, e.hpMax, e.hp, shieldStroke(e, g));
       const flick = e.warn && Math.floor(e.age * 18) % 2 === 0;
       const lit = e.armed || flick;
       if (lit) {

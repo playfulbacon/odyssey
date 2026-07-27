@@ -42,21 +42,33 @@ Two obstacles that open the same way look the same, and an obstacle's colour is
 | **gold, dotted** | safe only with both fingers off the glass. |
 | **pink** | safe only during its dark window. |
 
-Two colours belong to neither family, and they are the two that carry rules:
+## Shields
 
-- **violet** — the boosted ball, and every ring of obstacle armour. A ring means
-  one thing wherever you see it: only a boosted ball takes it off. Collectables
-  never wear one.
-- **ink** — the ball at rest, the paddles, a half of the line someone is holding.
+Only obstacles wear a shield, and **a shield is stripped by the state it is
+drawn in**. There are two kinds, and the whole point is that they look nothing
+alike:
 
-The ball reports one thing and one thing only: violet means it can break a ring.
-The other state lives on **the line**, which is where it belongs — each half
-reports its own player. A half nobody is holding breaks into a faded gold dotted
-line, and when both halves have, the PHANTOM is open and the line brightens.
+- **Boost shield** — violet, solid. The colour the ball turns while boosting,
+  and a boosted ball is what strips a layer.
+- **Ghost shield** — gold, dotted. The exact stroke a half of the line takes on
+  when nobody is holding it, and a *ghosted line* is what strips a layer.
 
-The phantom wears that exact treatment: a faded gold dotted outline that
-brightens on the same cue. Both come from a single `handsOffStroke()`, so it is
-not a resemblance that has to be maintained — it is one definition drawn twice.
+Anything else passes straight through and does nothing. Each good pass strips
+*ball power* layers; when the last one goes, so does the thing inside.
+
+The ball carries one key — violet, when it is boosting. The other lives on **the
+line**, where it belongs, because the line has two halves and can report each
+player separately. A half nobody is holding breaks into faded gold dots; when
+both halves have, the line is *ghosted* and brightens.
+
+A ghost shield and a ghosted line are not similar-looking, they are the same
+call: both come from `handsOffStroke()`, and both brighten on the same cue.
+`resolveObstacle()` asks the shield whether the current state breaks it, so the
+picture and the rule cannot come apart.
+
+Two colours are outside the warm/cool split because they carry rules rather than
+identity: **violet** (above) and **ink** — the ball at rest, the paddles, and a
+half of the line someone is holding.
 
 ## Pieces
 
@@ -71,31 +83,31 @@ collectable is tempo, and fuel for your multiplier. The obstacles are the income
 
 **Obstacles** are the whole game. They cost a life on the wrong kind of contact,
 and the breakable ones pay several times what a collectable does — they are the
-only things on the field that can take anything from you. Rings live here and
+only things on the field that can take anything from you. Shields live here and
 nowhere else.
 
-| | wears | rings | pays | safe to touch with |
+| | wears | shield | pays | safe to touch with |
 |---|---|---|---|---|
 | **SLAB** | red | — | — | nothing. Move the line around it. |
 | **ROTOR** | red | — | — | nothing, and it sweeps toward you. |
-| **BRITTLE** | orange | 3 | 430 | a boosted ball. |
-| **PULSAR** | pink | 2 | 340 | anything, during its dark window. |
-| **PHANTOM** | dotted gold | 1 | 700 | both fingers off the glass. |
+| **BRITTLE** | orange | 3-layer boost | 430 | a boosted ball. |
+| **PULSAR** | pink | 2-layer boost | 340 | anything, during its dark window. |
+| **PHANTOM** | gold | 2-layer ghost | 700 | both fingers off the glass. |
 
-The PULSAR is the timing one: lit and wide it kills, dark and small it is inert.
-It never changes hue, because its gate never changes — only the window does.
-
-The PHANTOM carries two gates at once, so it only has one ring: you are safe to
-coast through it with both hands off, and a boost that is *still alive* in that
-same window destroys it outright.
+An obstacle is two things: a **gate**, which says when it is safe to touch and
+therefore what colour it wears, and a **shield**, which says what strips a layer.
+For BRITTLE and PHANTOM those are the same condition — if the touch is safe, it
+counts. The PULSAR is the one piece that separates them: a timing gate over a
+boost shield, so a dark pulsar is safe to brush past but still needs a boosted
+pass to break.
 
 Everything fades in behind a dashed telegraph ring and is inert until it lands.
 
-Because every ring needs a boost, the alternating lift is the basic rhythm of
-scoring: you each shove as the ball runs away from you, so it is violet in both
-directions and can break whatever it crosses. A PHANTOM is the one piece that
-wants you to stop doing that — line it up, then one of you lifts, then the
-other, before the first shove dies.
+Because a boost shield needs a boost, the alternating lift is the basic rhythm
+of scoring: you each shove as the ball runs away from you, so it is violet in
+both directions. The PHANTOM is the one piece that wants the opposite — line it
+up, then both of you let go and leave the glass alone while the ghosted line
+saws through it.
 
 **Launching.** At the start of a run, and after every lost life, both players
 hold their half until the bar fills. A lost ball comes back on the paddle of the
@@ -148,7 +160,7 @@ drive it. You only move while you are "holding", exactly like a finger.
 the field is letterboxed to a phone aspect ratio so it plays the same.
 
 ```sh
-npm test     # rules tests: colour language, gate matrix, boost maths, economy
+npm test     # rules tests + a recording-canvas check that the picture matches
 npm run check
 ```
 
@@ -172,7 +184,7 @@ test/           rules tests (node --test)
 `src/config.js` is the whole dial board — ball pace, boost strength and
 duration, launch hold time, run targets, upgrade prices, and the per-run
 difficulty curve. `src/entities.js` holds the palette, the gate table, and each
-piece's own numbers (armour, payout, speed) alongside the blurb the playground
+piece's own numbers (shield kind and layers, payout, speed) alongside the blurb the playground
 shows. An obstacle's colour is not written down anywhere: it comes from its
 gate, so adding a piece means picking a gate, not picking a hue.
 
