@@ -5,8 +5,9 @@
 //   The warm hue names the gate, so two obstacles that open the same way look
 //   the same. The cool hue is identity only.
 //   Shields come in two kinds: violet and solid for a boost shield, dotted gold
-//   for a ghost shield. A ghost shield is drawn with the same handsOffStroke()
-//   as a half of the line nobody is holding, because that is what strips it.
+//   for a ghost shield. A ghost shield is drawn with the same ghostStroke() as
+//   a ghosted line, because that is what strips it — and gold only ever appears
+//   on the line once the ghosted state is actually live.
 
 import { CFG } from './config.js';
 import { PALETTE, GATES, SHIELDS, stateColorOf, ballColorFor, lineColorFor } from './entities.js';
@@ -43,14 +44,17 @@ const fmtTime = (s) => {
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 };
 
-// The hands-off language, in one place so it cannot drift apart. Gold and
-// dotted, faded while the state is only half true and bright the moment it is
-// live. Worn by a half of the line nobody is holding and by the PHANTOM, the
-// obstacle that state opens — they should look like the same idea because they
-// are the same idea.
-export function handsOffStroke(ctx, S, live) {
-  ctx.strokeStyle = GOLD;
-  ctx.globalAlpha *= live ? 0.95 : 0.45;
+// The ghost treatment, in one place so it cannot drift apart: same dash, same
+// cap, same weight, faded until the state is live and bright once it is. Worn
+// by a released half of the line and by a ghost shield.
+//
+// Colour is the caller's, because the two do not agree on it. The shield is
+// always gold — that is what the piece *is*. The line only earns gold once both
+// halves are released; a single lifted finger gets the dots without the colour,
+// so gold on screen always means the phantom is open right now.
+export function ghostStroke(ctx, S, live, color) {
+  ctx.strokeStyle = color;
+  ctx.globalAlpha *= live ? 0.95 : 0.4;
   ctx.lineWidth = (live ? 2 : 1.6) * S;
   ctx.lineCap = 'round';
   ctx.setLineDash([1.5 * S, 4.5 * S]);
@@ -92,13 +96,13 @@ function segRing(ctx, x, y, r, total, left, setup) {
 }
 
 // A boost shield is violet and solid, matching the ball that strips it. A ghost
-// shield borrows handsOffStroke outright, so it is not merely similar to a
-// released half of the line — it is the same call.
+// shield borrows ghostStroke outright, so it is not merely similar to a ghosted
+// line — it is the same call, and always in the phantom's gold.
 function shieldStroke(e, g) {
   const S = g.S;
   if (e.shield === 'ghost') {
     const live = g.input.handsOff && g.phase === 'play';
-    return (ctx) => handsOffStroke(ctx, S, live);
+    return (ctx) => ghostStroke(ctx, S, live, SHIELDS.ghost.color);
   }
   return (ctx) => {
     ctx.strokeStyle = SHIELDS.boost.color;
@@ -174,19 +178,19 @@ function drawTerritory(ctx, g) {
 }
 
 // Two halves, so each player can see at a glance whether their own finger is
-// down. A held half is solid ink; a released one breaks into the dotted gold of
-// the PHANTOM, and goes bright when both halves have.
+// down. Held is solid ink; released breaks into faded dots straight away, and
+// the dots turn the phantom's gold only once both halves are released.
 function drawLine(ctx, g, A, B) {
   const M = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
-  const open = g.input.handsOff;
+  const ghosted = g.input.handsOff;
   const seg = (P, Q, on) => {
     ctx.save();
     if (on) {
       ctx.globalAlpha = 0.92;
-      ctx.strokeStyle = lineColorFor(true);
+      ctx.strokeStyle = lineColorFor(true, ghosted);
       ctx.lineWidth = 1.4 * g.S;
     } else {
-      handsOffStroke(ctx, g.S, open);
+      ghostStroke(ctx, g.S, ghosted, lineColorFor(false, ghosted));
     }
     ctx.beginPath();
     ctx.moveTo(P.x, P.y); ctx.lineTo(Q.x, Q.y);
@@ -201,7 +205,7 @@ function drawPaddle(ctx, g, P, p, inward) {
   const w = g.paddleW, h = g.paddleH, S = g.S;
   ctx.save();
   ctx.globalAlpha = p.touching ? 1 : 0.5;
-  ctx.fillStyle = lineColorFor(p.touching);
+  ctx.fillStyle = lineColorFor(p.touching, g.input.handsOff);
   roundRect(ctx, P.x - w / 2, P.y - h / 2, w, h, CFG.paddle.round * S);
   ctx.fill();
 

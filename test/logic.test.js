@@ -81,9 +81,16 @@ test('the ball reports one thing: whether it can break a ring', () => {
   assert.equal(ballColorFor({ boosted: false, handsOff: true }), PALETTE.ink);
 });
 
-test('a released half of the line wears the colour of the obstacle it opens', () => {
-  assert.equal(lineColorFor(false), OBSTACLES.phantom.color);
-  assert.equal(lineColorFor(true), PALETTE.ink);
+test('the line only turns gold once it is actually ghosted', () => {
+  // Held: the line's own ink, ghosted or not.
+  assert.equal(lineColorFor(true, false), PALETTE.ink);
+  assert.equal(lineColorFor(true, true), PALETTE.ink);
+  // Released while the other half is still held: dotted, but still ink. Gold
+  // here would claim the phantom was open when it is not.
+  assert.equal(lineColorFor(false, false), PALETTE.ink);
+  // Released with both halves released: the phantom's own colour, exactly.
+  assert.equal(lineColorFor(false, true), OBSTACLES.phantom.color);
+  assert.equal(lineColorFor(false, true), SHIELDS.ghost.color);
 });
 
 test('a pulsar never changes hue, only its window', () => {

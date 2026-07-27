@@ -9,7 +9,11 @@
 // because the whole boost mechanic is built on lifting and replacing fingers.
 //
 // Keyboard and mouse fall back to the same model so the prototype is testable
-// on a desktop: you only move while you are "holding".
+// on a desktop. On a keyboard, *moving is holding*: a direction key counts as a
+// finger on the glass and letting go of it lifts, so the line ghosts as soon as
+// neither paddle is being driven. That is a testing affordance, not the real
+// control scheme — but it means one person can drive both sides with two hands
+// and never has to hold a modifier down.
 
 import { CFG } from './config.js';
 
@@ -143,24 +147,27 @@ export class Input {
       KeyJ: [this.b, 'keyLeft'], KeyL: [this.b, 'keyRight'], KeyK: [this.b, 'keyHold'],
     };
 
+    // Key state only; whether that counts as a touch is settled in update(),
+    // so a direction key and the hold key go through the same one door.
     window.addEventListener('keydown', (e) => {
       const m = keyMap[e.code];
       if (!m || !this.enabled) return;
       e.preventDefault();
       if (e.repeat) return;
       m[0][m[1]] = true;
-      if (m[1] === 'keyHold') this.press(m[0]);
     });
 
     window.addEventListener('keyup', (e) => {
       const m = keyMap[e.code];
       if (!m) return;
       m[0][m[1]] = false;
-      if (m[1] === 'keyHold' && m[0].pointerId === null) this.release(m[0]);
     });
 
     window.addEventListener('blur', () => {
-      for (const p of [this.a, this.b]) this.release(p);
+      for (const p of [this.a, this.b]) {
+        p.keyLeft = p.keyRight = p.keyHold = false;
+        this.release(p);
+      }
     });
   }
 
@@ -177,10 +184,18 @@ export class Input {
     const lo = this.halfN, hi = 1 - this.halfN;
     for (const p of [this.a, this.b]) {
       if (p.boostT > 0) p.boostT = Math.max(0, p.boostT - dt);
-      if (p.touching && p.pointerId === null) {
+
+      if (p.pointerId === null) {
         const dir = (p.keyRight ? 1 : 0) - (p.keyLeft ? 1 : 0);
+        // Driving the paddle is what puts the finger down. The hold key is
+        // there for the one thing moving cannot express: staying put without
+        // lifting, which is what the boost rhythm needs.
+        const down = dir !== 0 || p.keyHold;
+        if (down && !p.touching) this.press(p);
+        else if (!down && p.touching) this.release(p);
         if (dir) p.nx = clamp(p.nx + dir * 0.95 * dt, lo, hi);
       }
+
       p.nx = clamp(p.nx, lo, hi);
     }
   }

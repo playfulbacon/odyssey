@@ -21,7 +21,6 @@
   <section class="screen" id="screen-title">
     <div class="panel">
       <h1 class="logo">ODYSSEY</h1>
-      <p class="tagline">two players · one phone · one line</p>
       <div class="stack">
         <button class="btn primary" data-act="start-run">START RUN</button>
         <button class="btn" data-act="open-playground">PLAYGROUND</button>
@@ -42,7 +41,7 @@
 
       <h3>BOOST</h3>
       <p><b>Lift your finger</b> to shove the ball away from you. For a moment it flies. A lift does nothing to a ball coming the other way, and if you both lift at once the two shoves cancel and the ball keeps its normal pace.</p>
-      <p>While your finger is off the screen your half of the line breaks into a faded gold dotted line — and your paddle is frozen where you left it.</p>
+      <p>While your finger is off the screen your half of the line breaks into faded dots — and your paddle is frozen where you left it.</p>
 
       <h3>READING THE FIELD</h3>
       <p><b>Cool is safe, warm will cost you a life.</b> Shape says it a second time — collectables are an <b>O</b>, obstacles an <b>X</b> — so you never have to pick one signal out at speed.</p>
@@ -65,13 +64,17 @@
       <p>Only obstacles wear a shield, and a shield is stripped by <b>the state it is drawn in</b>. There are two, and they look nothing alike:</p>
       <ul class="ticks">
         <li><b>Boost shield</b> — violet and solid, the colour the ball turns while boosting. Only a boosted ball strips a layer.</li>
-        <li><b>Ghost shield</b> — dotted gold, the exact treatment a half of the line takes on when nobody is holding it. Only a ghosted line strips a layer.</li>
+        <li><b>Ghost shield</b> — dotted gold, the exact treatment the line takes on once <i>nobody</i> is holding it. Only a ghosted line strips a layer.</li>
       </ul>
       <p>Anything else passes straight through and does nothing at all. Each good pass strips <b>ball power</b> layers, and when the last one goes the thing inside goes with it.</p>
 
       <h3>THE GHOSTED LINE</h3>
-      <p>The ball only ever tells you one thing — violet means it can strip a boost shield. The <i>line</i> carries the other key: <b>the half you are not holding breaks into a faded gold dotted line</b>, and when both halves have, the line is <i>ghosted</i> and brightens.</p>
-      <p>A ghost shield is drawn as that exact stroke, and brightens on the same cue. It is not a resemblance — the shield and the line come from one definition, so a ghosted line and the shield it strips look like the same substance.</p>
+      <p>The ball only ever tells you one thing — violet means it can strip a boost shield. The <i>line</i> carries the other key, in two steps:</p>
+      <ul class="ticks">
+        <li>Let go and <b>your half breaks into faded dots</b> straight away. That is your own state, and only yours.</li>
+        <li>Once you have <i>both</i> let go the dots <b>turn gold</b> and brighten. The line is now the same colour as a ghost shield, because it is now the thing that strips one.</li>
+      </ul>
+      <p>Gold never appears on the line early. If you can see it, the phantom is open — that is the whole point of holding the colour back.</p>
 
       <h3>OBSTACLES</h3>
       <p>This is the whole game. The breakable ones pay several times what a collectable does, because they are the only things that can cost you:</p>
@@ -89,9 +92,11 @@
       <p>Every run gives you a clock and a score to beat. Clear it and spend your points on upgrades — lives, ball power, run time, boost duration — before the next one. Each run the obstacles get meaner. Miss the target, or burn every life, and the game ends.</p>
 
       <h3>DESKTOP KEYS</h3>
-      <p class="keys">Bottom player — <kbd>S</kbd> hold, <kbd>A</kbd>&nbsp;<kbd>D</kbd> slide.<br />
-      Top player — <kbd>K</kbd> hold, <kbd>J</kbd>&nbsp;<kbd>L</kbd> slide.<br />
-      The mouse also works as one player. You only move while holding.</p>
+      <p class="keys">Bottom player — <kbd>A</kbd>&nbsp;<kbd>D</kbd> to slide.<br />
+      Top player — <kbd>J</kbd>&nbsp;<kbd>L</kbd> to slide.<br />
+      Nothing to hold down: <b>moving is holding</b>. Let go of the keys and that side lifts, so the line ghosts once neither paddle is being driven.<br />
+      <kbd>S</kbd> and <kbd>K</kbd> keep a side down without moving it, for the boost rhythm.<br />
+      The mouse also works as one player.</p>
 
       <div class="stack">
         <button class="btn" data-act="back-title">BACK</button>

@@ -42,7 +42,7 @@ function recorder() {
 }
 
 function stubInput(aTouch, bTouch) {
-  const p = (t) => ({ nx: 0.5, touching: t, boostT: 0, pointerId: null });
+  const p = (t) => ({ nx: 0.5, touching: t, boostT: 0, pointerId: null, keyLeft: false, keyRight: false, keyHold: false });
   return {
     a: p(aTouch), b: p(bTouch),
     boostDir: 0, boostDur: 0.4, enabled: true,
@@ -77,16 +77,34 @@ const frame = (a, b) => frameWith('phantom', a, b);
 const goldDotted = (ops) =>
   ops.filter((o) => o.op === 'stroke' && o.strokeStyle === GOLD && o.dash.length > 0);
 
-test("the phantom's shield is drawn dotted whoever is holding", () => {
-  // With both players holding, the only gold dotted thing on screen is the
-  // shield — the line halves are ink. It never appears solid.
-  assert.ok(goldDotted(frame(true, true)).length >= 1, 'both holding');
-  assert.ok(goldDotted(frame(true, false)).length >= 2, 'one released half plus the shield');
-  assert.ok(goldDotted(frame(false, true)).length >= 2, 'the other half plus the shield');
-  assert.ok(goldDotted(frame(false, false)).length >= 3, 'both halves plus the shield');
+test("the phantom's shield is gold and dotted whoever is holding", () => {
+  // The shield is the piece's identity, so it never loses its colour — you can
+  // always pick a phantom out of the field.
+  for (const [a, b] of [[true, true], [true, false], [false, true], [false, false]]) {
+    assert.ok(goldDotted(frame(a, b)).length >= 1, `touches ${a}/${b}`);
+  }
 });
 
-test('a released half of the line and a ghost shield are drawn the same way', () => {
+test('gold on the line means the phantom is open right now, and nothing less', () => {
+  const dotted = (ops) => ops.filter((o) => o.op === 'stroke' && o.dash.length > 0);
+
+  // One player has let go: their half is dotted the moment they lift, but it is
+  // still the line's own ink. Only the shield is gold.
+  const one = dotted(frame(true, false));
+  assert.ok(one.some((o) => o.strokeStyle === PALETTE.ink),
+    'the released half should be dotted ink');
+  assert.ok(one.some((o) => o.strokeStyle === GOLD),
+    'and the shield should still be gold, so gold has not gone missing');
+
+  // Both let go: the line matches the shield exactly, and no ink dots are left.
+  const both = dotted(frame(false, false));
+  assert.equal(both.filter((o) => o.strokeStyle === PALETTE.ink).length, 0,
+    'once both let go every dotted stroke is gold');
+  assert.ok(both.filter((o) => o.strokeStyle === GOLD).length >= 3,
+    'both halves plus the shield');
+});
+
+test('a ghosted line and a ghost shield are drawn the same way', () => {
   // Nobody holding: two line halves plus every layer of the shield, identical
   // dash, identical weight, identical cap. This is the claim the whole idea
   // rests on — the shield is not *like* a ghosted line, it is one.

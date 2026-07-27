@@ -26,9 +26,9 @@
 //   boost shield  violet, solid. The colour the ball turns while boosting, and
 //                 a boosted ball is what strips it.
 //   ghost shield  gold, dotted. The exact treatment a half of the line takes on
-//                 when nobody is holding it, and a ghosted line is what strips
-//                 it. See handsOffStroke() in render.js — one definition, worn
-//                 by the released line and by the shield alike.
+//                 once *nobody* is holding it, and a ghosted line is what strips
+//                 it. See ghostStroke() in render.js — one definition, worn by
+//                 the ghosted line and by the shield alike.
 //
 // INK is the rest: the ball at its normal pace, the paddles, a held half of the
 // line.
@@ -77,10 +77,12 @@ export function ballColorFor({ boosted }) {
   return boosted ? PALETTE.ring : PALETTE.ink;
 }
 
-// The line is where "nobody is holding this end" is reported, in the colour of
-// the obstacle that state opens.
-export function lineColorFor(touching) {
-  return touching ? PALETTE.ink : GATES.handsOff.color;
+// A half of the line you have let go of goes dotted straight away — that is
+// yours to see, and it is true the moment you lift. It only turns *gold* once
+// both halves have, because gold is the phantom's colour and it would be lying
+// if it showed up while the ghosted state was still half true.
+export function lineColorFor(touching, ghosted) {
+  return !touching && ghosted ? GATES.handsOff.color : PALETTE.ink;
 }
 
 // Collectables carry no rings and no conditions. Touch one and it is banked.

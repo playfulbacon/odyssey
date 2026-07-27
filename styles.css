@@ -109,7 +109,7 @@ h3.sec {
   margin-top: 10px;
 }
 
-.tagline, .lede, .foot, p, li {
+.lede, .foot, p, li {
   font-size: 12.5px;
   line-height: 1.65;
   color: var(--dim);

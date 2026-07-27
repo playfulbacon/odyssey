@@ -21,8 +21,7 @@ constantly.
 **Lift** your finger to shove the ball away from you. For a moment it flies. A
 lift does nothing to a ball coming the other way, and if you both lift at once
 the two shoves cancel out. While your finger is off the glass your half of the
-line breaks into a faded gold dotted line — and your paddle is frozen where you
-left it.
+line breaks into faded dots — and your paddle is frozen where you left it.
 
 ## Reading the field
 
@@ -58,13 +57,22 @@ Anything else passes straight through and does nothing. Each good pass strips
 
 The ball carries one key — violet, when it is boosting. The other lives on **the
 line**, where it belongs, because the line has two halves and can report each
-player separately. A half nobody is holding breaks into faded gold dots; when
-both halves have, the line is *ghosted* and brightens.
+player separately, in two steps:
+
+1. Let go and **your half breaks into faded dots** immediately. That is your own
+   state and nobody else's.
+2. Once *both* halves are released the dots **turn gold** and brighten — the
+   line is now the same colour as a ghost shield, because it is now the thing
+   that strips one.
+
+Gold is held back on purpose. It never shows on the line while the ghosted state
+is only half true, so seeing gold always means the phantom is open right now.
 
 A ghost shield and a ghosted line are not similar-looking, they are the same
-call: both come from `handsOffStroke()`, and both brighten on the same cue.
-`resolveObstacle()` asks the shield whether the current state breaks it, so the
-picture and the rule cannot come apart.
+call: both come from `ghostStroke()`. The shield is always gold — that is what
+the piece *is* — and the line earns that colour only when it has actually
+become the key. `resolveObstacle()` asks the shield whether the current state
+breaks it, so the picture and the rule cannot come apart.
 
 Two colours are outside the warm/cool split because they carry rules rather than
 identity: **violet** (above) and **ink** — the ball at rest, the paddles, and a
@@ -148,13 +156,18 @@ Add the page to your home screen for a fullscreen, chrome-free run.
 
 ### Testing on a desktop
 
-The whole thing is playable from the keyboard, which is how the automated tests
-drive it. You only move while you are "holding", exactly like a finger.
+The whole thing is playable from the keyboard, and one person can drive both
+sides. **Moving is holding**: a direction key counts as a finger on the glass,
+and letting go of it lifts — so the line ghosts as soon as neither paddle is
+being driven, without holding a modifier down.
 
-| | hold | slide |
+| | slide | hold still |
 |---|---|---|
-| Bottom player | <kbd>S</kbd> | <kbd>A</kbd> <kbd>D</kbd> |
-| Top player | <kbd>K</kbd> | <kbd>J</kbd> <kbd>L</kbd> |
+| Bottom player | <kbd>A</kbd> <kbd>D</kbd> | <kbd>S</kbd> |
+| Top player | <kbd>J</kbd> <kbd>L</kbd> | <kbd>K</kbd> |
+
+The hold keys cover the one thing moving cannot express — staying put without
+lifting — which is what the boost rhythm needs.
 
 <kbd>Esc</kbd> pauses. The mouse also works as a single player. On a wide window
 the field is letterboxed to a phone aspect ratio so it plays the same.
