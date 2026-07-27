@@ -185,24 +185,23 @@ kbd {
   cursor: pointer;
 }
 
-.corner-btn {
+/* Stood on its side against the right edge, mirroring the HUD strip on the
+   left, with the lettering facing away from the middle of the screen. Both
+   pieces of furniture are side-on to both players rather than upright for
+   one of them — and turning the phone lands them the right way up. */
+.btn.edge {
   position: absolute;
   top: 50%;
   right: 8px;
   transform: translateY(-50%);
   z-index: 8;
-  font: inherit;
+  writing-mode: vertical-rl;
+  padding: 13px 11px 11px;
   font-size: 11px;
-  letter-spacing: .1em;
-  width: 34px;
-  height: 34px;
+  letter-spacing: .22em;
   color: var(--dim);
-  background: transparent;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  cursor: pointer;
 }
-.corner-btn[hidden] { display: none; }
+.btn.edge[hidden] { display: none; }
 
 /* ── cards (playground + shop) ───────────────────────── */
 
