@@ -502,17 +502,37 @@ test('the multiplier climbs on every kill and resets on damage', () => {
 
 // ── run economy ─────────────────────────────────────────────────────────────
 
-test('clearing a run banks a time bonus', () => {
+test('clearing early pays gold, and never points', () => {
   let finished = null;
   const g = new Game({}, stubInput(), { onFinish: (r) => { finished = r; } });
   g.resize(400, 800, 1);
   g.startRun(1, emptyUpgrades());
   g.score = g.target;
+  g.gold = 40;
   g.timeLeft = 10;
   g._finish(true, 'TARGET MET');
+
   assert.equal(finished.cleared, true);
-  assert.equal(finished.bonus, 10 * CFG.run.timeBonusPerSec);
-  assert.equal(g.score, g.target + finished.bonus);
+  assert.equal(finished.bonus, 10 * CFG.run.timeBonusGold);
+  assert.equal(finished.dug, 40, 'what was dug is reported on its own');
+  assert.equal(g.gold, 40 + finished.bonus, 'and the bonus lands in the wallet');
+  assert.equal(g.score, g.target, 'points are untouched — they had one job');
+});
+
+test('points do nothing but clear the stage', () => {
+  // They are not spent, not carried and not totalled: the only place a score
+  // is ever compared to anything is against its own run's target.
+  const g = mkGame();
+  const before = g.gold;
+  g.score = g.target * 10;
+  g.timeLeft = 0;                 // no time bonus, so gold can only move if points move it
+  g._finish(true, 'TARGET MET');
+  assert.equal(g.gold, before, 'a huge score converts to nothing');
+
+  const poor = mkGame();
+  poor.gold = 999999;
+  poor._updatePlay(0.001);
+  assert.equal(poor.active, true, 'and a huge wallet clears nothing');
 });
 
 test('run 1 carries all three families, because it has to', () => {

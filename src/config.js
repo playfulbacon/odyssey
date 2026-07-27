@@ -41,7 +41,10 @@ export const CFG = {
 
   run: {
     baseTime: 60,
-    timeBonusPerSec: 25,
+    // Clearing early pays in *gold*, because gold is the only thing worth
+    // having once the target is met. Bonus points would be a number that does
+    // nothing, added to a pile that is already big enough.
+    timeBonusGold: 6,
     // Points needed to clear run n. Points come from kills and nowhere else.
     target: (n) => Math.round(1600 * Math.pow(n, 1.32)),
   },
@@ -56,10 +59,10 @@ export const CFG = {
 
 // ── upgrades ────────────────────────────────────────────────────────────────
 //
-// Bought with gold, which is a different pile from points: points are the run
-// target and come only from kills, gold is the wallet and comes only from
-// motes. You cannot spend your way past a target or score your way to an
-// upgrade.
+// Gold buys these, and gold is the only thing that buys anything. Points do one
+// job and then stop: they clear the stage. They are not saved, not spent, not
+// carried forward and not totalled — a run's points matter only against that
+// run's target.
 
 export const UPGRADES = [
   {

@@ -32,9 +32,18 @@ and it is worth no points at all.
 **Points** come from killing enemies and nothing else, and points are what the
 run target is measured in.
 
-They never feed each other. You cannot spend your way past a target, and you
-cannot score your way to an upgrade — a run is won by fighting and paid for by
-digging.
+They never feed each other. **Gold buys upgrades; points clear stages, and that
+is the whole of what points do.** They are not spent, not carried forward and
+not totalled — a run's points matter only against that run's target, and the
+moment it is met they stop mattering at all. A run is won by fighting and paid
+for by digging.
+
+Which is why clearing early pays a **gold** bonus rather than bonus points:
+points you have already won the run with are worth nothing, and the only reward
+worth handing out is the one you can spend.
+
+The record kept between games is *how deep you got*, not a score — adding up
+points across runs would be adding up unrelated numbers.
 
 ## Reading the field
 

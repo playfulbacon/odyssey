@@ -74,7 +74,9 @@ export class UI {
   // ── title ─────────────────────────────────────────────────────────────────
 
   refreshTitle(meta) {
-    $('#best-line').textContent = `best — ${meta.best.toLocaleString()}${meta.bestRun ? ` · run ${meta.bestRun}` : ''}`;
+    $('#best-line').textContent = meta.bestRun
+      ? `best — run ${meta.bestRun} · ${meta.bestGold.toLocaleString()} gold`
+      : 'best — no runs cleared yet';
     $('#mute-btn').textContent = meta.muted ? 'sound off' : 'sound on';
   }
 
@@ -156,9 +158,9 @@ export class UI {
   showShop(app, result) {
     $('#shop-eyebrow').textContent = `RUN ${result.run} CLEARED`;
     $('#shop-summary').innerHTML =
-      stat('POINTS', result.score.toLocaleString(), 'good') +
-      stat('TARGET', result.target.toLocaleString()) +
-      stat('GOLD DUG', `+${result.gold.toLocaleString()}`, 'good') +
+      stat('POINTS', `${result.score.toLocaleString()} / ${result.target.toLocaleString()}`, 'good') +
+      stat('GOLD DUG', `+${result.dug.toLocaleString()}`, 'good') +
+      stat('TIME BONUS', `+${result.bonus.toLocaleString()}`, 'good') +
       stat('NEXT TARGET', CFG.run.target(result.run + 1).toLocaleString());
     this.renderShopList(app);
     this.show('shop');
@@ -198,9 +200,9 @@ export class UI {
     $('#result-stats').innerHTML =
       stat('RUNS CLEARED', totals.runsCleared) +
       stat('DIED ON', `RUN ${result.run}`, 'bad') +
-      stat('FINAL SCORE', totals.total.toLocaleString(), 'good') +
-      stat('BEST EVER', meta.best.toLocaleString()) +
-      `<div class="cell wide"><span class="k">LAST RUN</span><span class="v">${result.score.toLocaleString()} / ${result.target.toLocaleString()}</span></div>`;
+      stat('GOLD DUG', totals.dug.toLocaleString(), 'good') +
+      stat('BEST EVER', `RUN ${meta.bestRun}`) +
+      `<div class="cell wide"><span class="k">LAST RUN</span><span class="v">${result.score.toLocaleString()} / ${result.target.toLocaleString()} POINTS</span></div>`;
     this.show('result');
   }
 

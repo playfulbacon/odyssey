@@ -541,13 +541,16 @@ export class Game {
     this.phase = 'idle';
     this.active = false;
     this.input.enabled = false;
-    const bonus = cleared ? Math.round(this.timeLeft * CFG.run.timeBonusPerSec) : 0;
-    if (cleared) { this.score += bonus; sfx.clear(); } else sfx.over();
+    // The bonus lands in the wallet, not on the scoreboard. Points have already
+    // done their one job by this point.
+    const dug = this.gold;
+    const bonus = cleared ? Math.round(this.timeLeft * CFG.run.timeBonusGold) : 0;
+    if (cleared) { this.gold += bonus; sfx.clear(); } else sfx.over();
     this.hooks.onFinish?.({
       cleared, reason, run: this.run,
       score: this.score, target: this.target,
-      gold: this.gold,
-      timeLeft: this.timeLeft, bonus,
+      gold: this.gold, dug, bonus,
+      timeLeft: this.timeLeft,
       livesLeft: this.lives,
     });
   }

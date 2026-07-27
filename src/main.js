@@ -13,9 +13,9 @@ const KEY = 'odyssey.meta.v1';
 function loadMeta() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { best: 0, bestRun: 0, muted: false, ...JSON.parse(raw) };
+    if (raw) return { bestRun: 0, bestGold: 0, muted: false, ...JSON.parse(raw) };
   } catch { /* storage unavailable — play without records */ }
-  return { best: 0, bestRun: 0, muted: false };
+  return { bestRun: 0, bestGold: 0, muted: false };
 }
 
 function saveMeta(meta) {
@@ -64,7 +64,7 @@ class App {
     this.wallet = 0;
     this.run = 1;
     this.runsCleared = 0;
-    this.total = 0;
+    this.dug = 0;      // gold dug this game, for the results screen
   }
 
   // ── canvas ────────────────────────────────────────────────────────────────
@@ -107,22 +107,24 @@ class App {
   }
 
   onFinish(result) {
-    this.total += result.score;
-    if (this.total > this.meta.best) {
-      this.meta.best = this.total;
-      this.meta.bestRun = Math.max(this.meta.bestRun, this.runsCleared + (result.cleared ? 1 : 0));
+    // How deep you got is the record. A points total is not — points are
+    // measured against one run's target and mean nothing outside it, so adding
+    // them up across runs would be adding up unrelated numbers.
+    this.dug += result.gold;
+    const depth = this.runsCleared + (result.cleared ? 1 : 0);
+    if (depth > this.meta.bestRun || this.dug > this.meta.bestGold) {
+      this.meta.bestRun = Math.max(this.meta.bestRun, depth);
+      this.meta.bestGold = Math.max(this.meta.bestGold, this.dug);
       saveMeta(this.meta);
     }
 
     if (result.cleared) {
       this.runsCleared += 1;
-      // Gold, not points. Points are the target you had to hit to get here;
-      // gold is the separate pile you dug up along the way, and it is the only
-      // thing the shop takes.
+      // Gold, and only gold. It is the one thing the shop takes.
       this.wallet += result.gold;
       this.ui.showShop(this, result);
     } else {
-      this.ui.showResult(result, this.meta, { runsCleared: this.runsCleared, total: this.total });
+      this.ui.showResult(result, this.meta, { runsCleared: this.runsCleared, dug: this.dug });
     }
     this.ui.refreshTitle(this.meta);
   }
