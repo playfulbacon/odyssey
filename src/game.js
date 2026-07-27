@@ -7,8 +7,8 @@
 
 import { CFG, difficulty, derived } from './config.js';
 import {
-  PALETTE, GATES, SHIELDS, COLLECTABLES, OBSTACLES, makeCollectable, makeObstacle,
-  updateEntity, hitTest, resolveObstacle, stateColorOf, ballColorFor,
+  PALETTE, SHIELD, COLLECTABLES, OBSTACLES, makeCollectable, makeObstacle,
+  updateEntity, hitTest, resolveCollectable, stateColorOf, ballColorFor,
 } from './entities.js';
 import { sfx } from './audio.js';
 
@@ -33,7 +33,7 @@ export class Game {
     this.ball = { t: 0, dir: 1, state: 'normal', trail: [], x: 0, y: 0 };
     this.shake = 0;
     this.flash = 0;
-    this.flashColor = GATES.never.color;
+    this.flashColor = PALETTE.hazard;
     this.banner = null;
   }
 
@@ -255,11 +255,12 @@ export class Game {
       if (this._collide(p.x, p.y)) return;
     }
 
-    // The trail remembers the state, so a punch leaves a violet streak and a
-    // drift leaves a gold one.
+    // The trail remembers the state, so a shove leaves a thick orange streak
+    // behind it and a drift leaves a thin violet one.
     this.ball.trail.push({
       x: this.ball.x, y: this.ball.y,
       c: ballColorFor(this.ball.state),
+      boost: this.ball.state === 'boost',
     });
     if (this.ball.trail.length > CFG.ball.trail) this.ball.trail.shift();
   }
@@ -279,65 +280,55 @@ export class Game {
   _collide(x, y) {
     const br = this.ballR;
     // The ball's state *is* the key it carries, so what it can strip is exactly
-    // what it is drawn as. handsOff stays separate: a phantom is safe to touch
-    // the moment both fingers are off, even while a shove is still finishing.
-    const world = {
-      boosted: this.ball.state === 'boost',
-      ghosted: this.ball.state === 'ghost',
-      handsOff: this.input.handsOff,
-    };
+    // what it is drawn as: orange opens a shield, nothing else does.
+    const world = { boosted: this.ball.state === 'boost' };
 
     for (const e of this.entities) {
       if (e.dead || e.cool > 0 || e.spawnT > 0) continue;
       if (!hitTest(e, x, y, br)) continue;
 
-      if (e.cls === 'col') {
-        this._collect(e);   // no rings, no conditions: touching it is banking it
-      } else {
-        const r = resolveObstacle(e, world);
-        if (r === 'kill') { this._loseLife(e); return true; }
-        if (r === 'damage') { this._damageObstacle(e); e.cool = CFG.hitCool; }
-      }
+      // Obstacles have no gate and no shield left to check. Touching one is the
+      // only thing in the game that can cost you.
+      if (e.cls === 'obs') { this._loseLife(e); return true; }
+
+      const r = resolveCollectable(e, world);
+      if (r === 'collect') this._collect(e);
+      else if (r === 'damage') { this._strip(e); e.cool = CFG.hitCool; }
     }
     return false;
   }
 
-  _collect(e) {
+  // `cracked` means this one came out from behind a shield, so it lands harder.
+  _collect(e, cracked = false) {
     e.dead = true;
     const gain = Math.round(e.value * this.mult);
     this.score += gain;
     this._float(e.x, e.y, `+${gain}`, e.color);
-    this._burst(e.x, e.y, e.color, 16, 150);
-    sfx.collect(this.mult);
+    this._burst(e.x, e.y, e.color, cracked ? 26 : 16, cracked ? 220 : 150);
+    if (cracked) { sfx.destroy(); this.flash = 0.35; this.flashColor = e.color; }
+    else sfx.collect(this.mult);
     this.mult = Math.min(CFG.multCap, this.mult + 1);
-    this.shake = Math.max(this.shake, 2 * this.S);
+    this.shake = Math.max(this.shake, (cracked ? 5 : 2) * this.S);
   }
 
-  _damageObstacle(e) {
+  _strip(e) {
     e.hp -= this.power;
     e.flare = 1;
-    // Chips come off in the shield's own colour, so you can see which key landed.
-    this._burst(e.x, e.y, SHIELDS[e.shield]?.color || PALETTE.ring, 8, 120);
+    // Chips come off orange — the shield's colour, and the colour of the ball
+    // that just landed. They are the same substance.
+    this._burst(e.x, e.y, SHIELD.color, 8, 120);
     if (e.hp > 0) { sfx.crack(); this.shake = Math.max(this.shake, 2.5 * this.S); return; }
 
-    e.dead = true;
-    const gain = Math.round(e.value * this.mult);
-    this.score += gain;
-    this._float(e.x, e.y, `+${gain}`, stateColorOf(e));
-    this._burst(e.x, e.y, stateColorOf(e), 26, 220);
-    sfx.destroy();
-    this.mult = Math.min(CFG.multCap, this.mult + 1);
-    this.shake = Math.max(this.shake, 5 * this.S);
-    this.flash = 0.35;
-    this.flashColor = stateColorOf(e);
+    // The pass that takes the last ring banks the piece in the same touch.
+    this._collect(e, true);
   }
 
   _loseLife(e) {
     sfx.die();
-    this._burst(this.ball.x, this.ball.y, GATES.never.color, 30, 260);
+    this._burst(this.ball.x, this.ball.y, PALETTE.hazard, 30, 260);
     this.shake = 12 * this.S;
     this.flash = 0.7;
-    this.flashColor = GATES.never.color;
+    this.flashColor = PALETTE.hazard;
     this.mult = 1;
     if (e) { e.dead = true; this._burst(e.x, e.y, stateColorOf(e), 10, 140); }
 
@@ -370,7 +361,7 @@ export class Game {
     const live = this.entities.filter((e) => !e.dead);
 
     const cols = live.filter((e) => e.cls === 'col');
-    if (cols.length === 0) {
+    if (cols.length < (this.diff.maxCollectables || 1)) {
       this.collectTimer -= dt;
       if (this.collectTimer <= 0) {
         this._spawnCollectable();

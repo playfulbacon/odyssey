@@ -1,22 +1,20 @@
 // All drawing. Minimal palette, thin strokes, no textures.
 //
 // The visual language is documented at the top of entities.js. In short:
-//   O and a cool hue = collectable; X and a warm hue = obstacle.
-//   The warm hue names the gate, so two obstacles that open the same way look
-//   the same. The cool hue is identity only.
-//   Shields come in two kinds: violet and solid for a boost shield, dotted gold
-//   for a ghost shield. The ball wears whichever state it is in, so its colour
-//   is always the shield it can strip. Nothing else changes colour to say so —
-//   the line is ink throughout, and only breaks into dots to report which
-//   halves are being held.
+//   O and a cool hue = collectable; X and red = obstacle, and every obstacle is
+//   red because every obstacle has the same answer: don't.
+//   Orange is a state, not a family: it is every shield, and the boosted ball
+//   and trail that strip one.
+//   The ball says what it is doing with colour and nothing else — no ring, no
+//   dots, no outline. The line says nothing at all: it is a faded dotted rail
+//   between the paddles and it never changes.
 
 import { CFG } from './config.js';
-import { PALETTE, GATES, SHIELDS, stateColorOf, ballColorFor } from './entities.js';
+import { PALETTE, SHIELD, stateColorOf, ballColorFor } from './entities.js';
 
 const INK = PALETTE.ink;
-const RING = PALETTE.ring;
-const RED = GATES.never.color;
-const GOLD = GATES.handsOff.color;
+const ORANGE = PALETTE.boost;
+const RED = PALETTE.hazard;
 const DIM = '#6d737b';
 const BG = '#08090b';
 const TAU = Math.PI * 2;
@@ -45,18 +43,13 @@ const fmtTime = (s) => {
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 };
 
-// The dotted treatment, in one place so it cannot drift apart: same dash, same
-// cap, same weight, faded when it is only reporting and bright when it is live.
-// Worn by a ghost shield, by the ghosted ball's halo, and — in ink, faded — by
-// a half of the line nobody is holding.
-//
-// Colour is the caller's, because those three do not agree on it. Gold means
-// ghost; the line is never gold, because the line is not the thing that strips
-// anything.
-export function ghostStroke(ctx, S, live, color) {
-  ctx.strokeStyle = color;
-  ctx.globalAlpha *= live ? 0.95 : 0.4;
-  ctx.lineWidth = (live ? 2 : 1.6) * S;
+// The rail between the paddles: faded ink dots, and that is the only way it is
+// ever drawn. It is scenery — it shows you where the ball can go, not what
+// anybody is doing.
+export function railStroke(ctx, S) {
+  ctx.strokeStyle = INK;
+  ctx.globalAlpha *= 0.4;
+  ctx.lineWidth = 1.6 * S;
   ctx.lineCap = 'round';
   ctx.setLineDash([1.5 * S, 4.5 * S]);
 }
@@ -75,14 +68,18 @@ function pathX(ctx, x, y, r) {
   ctx.moveTo(x + k, y - k); ctx.lineTo(x - k, y + k);
 }
 
-// A shield: one arc segment per layer left. How it is stroked comes from the
-// shield's own kind, so the ring always says what strips it — violet and solid
-// for a boost shield, dotted gold for a ghost shield.
-function segRing(ctx, x, y, r, total, left, setup) {
+// A shield: one arc segment per layer left, in the colour of the ball that
+// strips it. Spent layers stay as ghosts of themselves so you can always see
+// how deep the piece was.
+function segRing(ctx, x, y, r, total, left, S) {
   if (!total) return;
   // save/restore, or the shield's stroke leaks onto the body drawn after it.
   ctx.save();
-  setup(ctx);
+  ctx.strokeStyle = SHIELD.color;
+  ctx.globalAlpha *= 0.95;
+  ctx.lineWidth = 2.7 * S;
+  ctx.lineCap = 'butt';
+  ctx.setLineDash([]);
   const lit = ctx.globalAlpha;
   const gap = total > 1 ? 0.18 : 0;
   const span = TAU / total - gap;
@@ -94,23 +91,6 @@ function segRing(ctx, x, y, r, total, left, setup) {
     ctx.stroke();
   }
   ctx.restore();
-}
-
-// A boost shield is violet and solid, a ghost shield gold and dotted — each
-// matching the ball that strips it, down to the stroke.
-function shieldStroke(e, g) {
-  const S = g.S;
-  if (e.shield === 'ghost') {
-    const live = g.input.handsOff && g.phase === 'play';
-    return (ctx) => ghostStroke(ctx, S, live, SHIELDS.ghost.color);
-  }
-  return (ctx) => {
-    ctx.strokeStyle = SHIELDS.boost.color;
-    ctx.globalAlpha *= 0.95;
-    ctx.lineWidth = 2.7 * S;
-    ctx.lineCap = 'butt';
-    ctx.setLineDash([]);
-  };
 }
 
 // ── entry point ─────────────────────────────────────────────────────────────
@@ -176,28 +156,16 @@ function drawTerritory(ctx, g) {
   ctx.restore();
 }
 
-// Two halves, so each player can see at a glance whether their own finger is
-// down: solid when held, faded dots when not. The line never changes colour —
-// it reports who is holding, and nothing more. What the ball can *do* about it
-// is on the ball.
+// One stroke, always the same: faded ink dots from paddle to paddle. The line
+// is the rail the ball runs on and nothing else — it does not report who is
+// holding, and it has no halves. Everything worth knowing is on the ball.
 function drawLine(ctx, g, A, B) {
-  const M = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
-  const seg = (P, Q, on) => {
-    ctx.save();
-    if (on) {
-      ctx.globalAlpha = 0.92;
-      ctx.strokeStyle = INK;
-      ctx.lineWidth = 1.4 * g.S;
-    } else {
-      ghostStroke(ctx, g.S, false, INK);
-    }
-    ctx.beginPath();
-    ctx.moveTo(P.x, P.y); ctx.lineTo(Q.x, Q.y);
-    ctx.stroke();
-    ctx.restore();
-  };
-  seg(A, M, g.input.a.touching);
-  seg(M, B, g.input.b.touching);
+  ctx.save();
+  railStroke(ctx, g.S);
+  ctx.beginPath();
+  ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawPaddle(ctx, g, P, p, inward) {
@@ -210,11 +178,11 @@ function drawPaddle(ctx, g, P, p, inward) {
 
   const y = P.y - inward * (h / 2 + 5 * S);
 
-  // A violet flare while the lift is still shoving, matching the ball.
+  // An orange flare while the lift is still shoving, matching the ball.
   if (p.boostT > 0) {
     const k = p.boostT / Math.max(0.001, g.input.boostDur);
     ctx.globalAlpha = k * 0.85;
-    ctx.strokeStyle = RING;
+    ctx.strokeStyle = ORANGE;
     ctx.lineWidth = 1.6 * S;
     ctx.beginPath();
     ctx.moveTo(P.x - (w / 2) * k, y);
@@ -225,6 +193,8 @@ function drawPaddle(ctx, g, P, p, inward) {
     // neither of them has to read text meant for the other.
     // Solid means held, dashed means not. No colour needed — violet is spoken
     // for, and this has nothing to do with breaking rings.
+    // This is the one place a hold is still reported, because during the ritual
+    // it is the only thing either player needs to know. It came off the line.
     ctx.globalAlpha = p.touching ? 0.9 : 0.3;
     ctx.strokeStyle = p.touching ? INK : DIM;
     ctx.lineWidth = 1.6 * S;
@@ -249,36 +219,26 @@ function drawBall(ctx, g, A, B) {
   if (g.phase === 'launch') y += (t >= 0.5 ? 1 : -1) * (g.paddleH / 2 + r * 0.9);
 
   ctx.save();
+  // The trail is drawn in whatever the ball was at the time, so a shove leaves
+  // an orange streak hanging in the air behind it — thicker and brighter than
+  // the ordinary trail, because that is the moment worth seeing.
   const n = g.ball.trail.length;
   for (let i = 0; i < n; i++) {
     const p = g.ball.trail[i];
     const k = (i + 1) / n;
-    ctx.globalAlpha = k * 0.3;
+    ctx.globalAlpha = k * (p.boost ? 0.62 : 0.3);
     ctx.fillStyle = p.c || INK;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, r * k * 0.75, 0, TAU);
+    ctx.arc(p.x, p.y, r * k * (p.boost ? 0.95 : 0.75), 0, TAU);
     ctx.fill();
   }
 
+  // Colour alone is the state. No halo, no outline, no dots — if the ball is
+  // orange it can strip a shield, and there is nothing else to read.
   ctx.globalAlpha = 1;
   ctx.fillStyle = key.color;
   pathO(ctx, x, y, r);
   ctx.fill();
-
-  // A halo in the ball's own colour, drawn the way that shield is drawn: solid
-  // for a boost, dotted for a ghost. Same stroke as the shield it is about to
-  // strip, so the two read as the same substance.
-  if (key.state === 'boost') {
-    ctx.globalAlpha = 0.6;
-    ctx.strokeStyle = key.color;
-    ctx.lineWidth = 1.3 * S;
-    pathO(ctx, x, y, r + 4 * S);
-    ctx.stroke();
-  } else if (key.state === 'ghost') {
-    ghostStroke(ctx, S, true, key.color);
-    pathO(ctx, x, y, r + 4 * S);
-    ctx.stroke();
-  }
   ctx.restore();
 }
 
@@ -304,7 +264,7 @@ function drawEntity(ctx, g, e) {
     ctx.strokeStyle = stateColorOf(e);
     ctx.lineWidth = 1 * S;
     ctx.setLineDash([3 * S, 4 * S]);
-    if (e.type === 'slab') {
+    if (e.shape === 'rect') {
       const pad = 14 * S * k;
       roundRect(ctx, e.x - e.w / 2 - pad, e.y - e.h / 2 - pad, e.w + pad * 2, e.h + pad * 2, 3 * S);
     } else {
@@ -320,8 +280,11 @@ function drawCollectable(ctx, g, e) {
   const S = g.S;
   const baseA = ctx.globalAlpha;
 
-  // Always open, so always the filled O with a pulse going out. Nothing here
-  // has a second state to draw.
+  // Shields live here now, and nowhere else. One orange arc per layer left,
+  // outside the body — the piece underneath is the same cool O either way,
+  // because what is behind the rings is never in doubt.
+  segRing(ctx, e.x, e.y, e.r + 3 * S, e.hpMax, e.hp, S);
+
   ctx.strokeStyle = e.color;
   ctx.fillStyle = e.color;
 
@@ -329,13 +292,17 @@ function drawCollectable(ctx, g, e) {
   pathO(ctx, e.x, e.y, e.r * 0.62 * pulse);
   ctx.fill();
 
-  ctx.globalAlpha = baseA * 0.4;
-  ctx.lineWidth = 1.2 * S;
-  pathO(ctx, e.x, e.y, e.r * (0.7 + ((e.age * 1.6) % 1) * 0.6));
-  ctx.stroke();
-  ctx.globalAlpha = baseA;
+  // The outgoing pulse only plays on a piece you can actually take. Behind a
+  // shield it would be an invitation to something that does nothing.
+  if (!e.hp) {
+    ctx.globalAlpha = baseA * 0.4;
+    ctx.lineWidth = 1.2 * S;
+    pathO(ctx, e.x, e.y, e.r * (0.7 + ((e.age * 1.6) % 1) * 0.6));
+    ctx.stroke();
+    ctx.globalAlpha = baseA;
+  }
 
-  if (e.type === 'drifter' && (e.vx || e.vy)) {
+  if (e.vx || e.vy) {
     const m = Math.hypot(e.vx, e.vy) || 1;
     ctx.globalAlpha = baseA * 0.4;
     ctx.lineWidth = 1.5 * S;
@@ -357,8 +324,10 @@ function drawObstacle(ctx, g, e) {
   ctx.fillStyle = col;
   ctx.lineWidth = 1.6 * S;
 
-  switch (e.type) {
-    case 'slab': {
+  switch (e.shape) {
+    // SLAB and SHARD are the same drawing at two sizes — which is the point.
+    // A shard is a chip off a slab, so it has to look like one.
+    case 'rect': {
       const x = e.x - e.w / 2, y = e.y - e.h / 2;
       const k = Math.min(e.w, e.h) * 0.34;
       ctx.globalAlpha = baseA * 0.12;
@@ -375,57 +344,15 @@ function drawObstacle(ctx, g, e) {
         pathX(ctx, e.x + (e.horiz ? f * e.w : 0), e.y + (e.horiz ? 0 : f * e.h), k);
         ctx.stroke();
       }
-      break;
-    }
-
-    case 'brittle': {
-      segRing(ctx, e.x, e.y, e.r + 3 * S, e.hpMax, e.hp, shieldStroke(e, g));
-      ctx.globalAlpha = baseA * 0.18;
-      pathO(ctx, e.x, e.y, e.r * 0.78); ctx.fill();
-      ctx.globalAlpha = baseA;
-      ctx.lineWidth = 2 * S;
-      pathX(ctx, e.x, e.y, e.r * 0.6); ctx.stroke();
-      break;
-    }
-
-    case 'phantom': {
-      const open = g.input.handsOff && g.phase === 'play';
-      // The dotted gold ring *is* the shield — there is no second outline. It
-      // is the same stroke a released half of the line wears, and it brightens
-      // on the same cue, because that is exactly the state that strips it.
-      segRing(ctx, e.x, e.y, e.r, e.hpMax, e.hp, shieldStroke(e, g));
-      ctx.globalAlpha = baseA * (open ? 0.24 : 0.06);
-      pathO(ctx, e.x, e.y, e.r * 0.6); ctx.fill();
-      // The X stays solid: dotting away the family glyph would cost more than
-      // the consistency is worth.
-      ctx.globalAlpha = baseA * (open ? 1 : 0.6);
-      ctx.strokeStyle = col;
-      ctx.lineWidth = 2 * S;
-      pathX(ctx, e.x, e.y, e.r * 0.46); ctx.stroke();
-      break;
-    }
-
-    case 'pulsar': {
-      segRing(ctx, e.x, e.y, e.rBig + 6 * S, e.hpMax, e.hp, shieldStroke(e, g));
-      const flick = e.warn && Math.floor(e.age * 18) % 2 === 0;
-      const lit = e.armed || flick;
-      if (lit) {
-        ctx.globalAlpha = baseA * 0.26;
-        pathO(ctx, e.x, e.y, e.rBig); ctx.fill();
-        ctx.globalAlpha = baseA;
-        ctx.lineWidth = 2 * S;
-        pathO(ctx, e.x, e.y, e.rBig); ctx.stroke();
-        pathX(ctx, e.x, e.y, e.rBig * 0.5); ctx.stroke();
-      } else {
-        // Same hue, dimmed right down: the gate never changes, only the window.
-        ctx.globalAlpha = baseA * 0.18;
-        ctx.setLineDash([2 * S, 5 * S]);
-        ctx.lineWidth = 1 * S;
-        pathO(ctx, e.x, e.y, e.rBig); ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.globalAlpha = baseA * 0.5;
-        ctx.lineWidth = 1.6 * S;
-        pathX(ctx, e.x, e.y, e.rSmall * 0.9); ctx.stroke();
+      // A stub out the back of a moving one, the same tell the drifter wears.
+      if (e.vx || e.vy) {
+        const m = Math.hypot(e.vx, e.vy) || 1;
+        ctx.globalAlpha = baseA * 0.45;
+        ctx.lineWidth = 1.5 * S;
+        ctx.beginPath();
+        ctx.moveTo(e.x, e.y);
+        ctx.lineTo(e.x - (e.vx / m) * e.r * 2.1, e.y - (e.vy / m) * e.r * 2.1);
+        ctx.stroke();
       }
       break;
     }
@@ -507,7 +434,8 @@ function drawRunStrip(ctx, g) {
   ctx.save();
   ctx.globalAlpha = 0.22; ctx.fillStyle = INK;
   ctx.fillRect(-w / 2, 14 * S, w, 1.6 * S);
-  ctx.globalAlpha = 0.95; ctx.fillStyle = RING;
+  // Ink, not orange: the HUD is furniture, and orange has a job on the field.
+  ctx.globalAlpha = 0.95; ctx.fillStyle = INK;
   ctx.fillRect(-w / 2, 14 * S, w * Math.min(1, g.score / g.target), 1.6 * S);
   ctx.restore();
 
@@ -533,7 +461,7 @@ function drawLaunchStrip(ctx, g) {
   ctx.save();
   ctx.globalAlpha = 0.22; ctx.fillStyle = INK;
   ctx.fillRect(-w / 2, 14 * S, w, 2.6 * S);
-  ctx.globalAlpha = 1; ctx.fillStyle = RING;
+  ctx.globalAlpha = 1; ctx.fillStyle = INK;
   ctx.fillRect(-w / 2, 14 * S, w * k, 2.6 * S);
   ctx.restore();
 }

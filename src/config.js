@@ -29,7 +29,8 @@ export const CFG = {
   },
 
   // The ball drifts while nobody is holding — but only once any shove already
-  // under way has finished.
+  // under way has finished. It strips nothing while drifting; it is just slow
+  // enough to line the next shot up with.
   ghost: { slow: 0.6 },
 
   launch: {
@@ -66,7 +67,7 @@ export const UPGRADES = [
   },
   {
     id: 'power', name: 'BALL POWER', base: 1150, growth: 2.05, max: 8,
-    desc: 'Heavier ball. More shield layers stripped from an obstacle per good pass.',
+    desc: 'Heavier ball. More shield layers stripped per boosted pass.',
     show: (l) => `power ${CFG.base.power + l}`,
   },
   {
@@ -76,7 +77,7 @@ export const UPGRADES = [
   },
   {
     id: 'boost', name: 'LONG BOOST', base: 760, growth: 1.72, max: 6,
-    desc: '+12% boost duration. A longer window in which the ball can strip a boost shield.',
+    desc: '+12% boost duration. A longer window in which the ball can strip a shield.',
     show: (l) => `+${l * 12}% boost`,
   },
 ];
@@ -100,25 +101,36 @@ export function difficulty(run) {
   const r = Math.max(1, run);
   const k = r - 1;
 
-  // Two collectables, neither of them a puzzle: the still one, then the moving
-  // one. Everything a player has to think about is on the obstacle side.
+  // All of the points, and all of the escalation, are on the collectable side:
+  // the still one, the moving one, then one more shield layer per run. Nothing
+  // is ever added to an obstacle, because there is nothing on an obstacle to
+  // add to — they only ever get more numerous and faster.
+  // Exactly one new piece per run, alternating sides: something new to catch,
+  // then something new to dodge. Everything is in play by run 7.
   const collectPool = ['mote'];
   if (r >= 2) collectPool.push('drifter');
+  if (r >= 3) collectPool.push('ward');
+  if (r >= 5) collectPool.push('shell');
+  if (r >= 7) collectPool.push('vault');
 
   const obstaclePool = ['slab'];
-  if (r >= 2) obstaclePool.push('brittle');
-  if (r >= 3) obstaclePool.push('pulsar');
-  if (r >= 4) obstaclePool.push('phantom');
-  if (r >= 5) obstaclePool.push('rotor');
+  if (r >= 4) obstaclePool.push('shard');
+  if (r >= 6) obstaclePool.push('rotor');
+
+  // A shielded piece takes several passes, so from the run they appear there
+  // has to be a second collectable on the field — otherwise the whole run
+  // queues up behind one ring.
+  const shielded = collectPool.some((t) => t === 'ward' || t === 'shell' || t === 'vault');
 
   return {
     run: r,
     collectPool,
     obstaclePool,
+    maxCollectables: shielded ? 2 : 1,
+    collectTtl: Math.max(11, 17 - k * 0.5),          // shielded pieces only
     maxObstacles: Math.min(7, 1 + Math.round(k * 0.8)),
     obstacleGap: Math.max(1.5, 4.6 - k * 0.32),      // seconds between spawns
     obstacleTtl: Math.max(9, 18 - k * 0.7),          // how long one sticks around
-    shieldBonus: Math.floor(k * 0.4),                // extra layers on a breakable obstacle
     ballSpeed: 1 + Math.min(0.55, k * 0.055),
     entitySpeed: 1 + k * 0.11,
     valueScale: 1 + k * 0.26,

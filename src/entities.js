@@ -1,12 +1,13 @@
 // Entity registry, factories, per-frame behaviour and hit tests.
 //
-// Two families:
-//   cls 'col' — collectables. Touch one and it is banked. That is all.
-//   cls 'obs' — obstacles. Lethal unless you meet their gate, and the only
-//               things in the game that wear a shield.
+// Two families, and the split is now absolute:
+//   cls 'col' — collectables. Worth points. Some wear a shield you have to
+//               boost through first, but none of them can ever hurt you.
+//   cls 'obs' — obstacles. Worth nothing, wear nothing, and are lethal on any
+//               contact whatsoever. There is no way through one.
 //
-// Every entity is collided against as a circle except SLAB (a rectangle) and
-// ROTOR (a hub plus swept arms).
+// Every entity is collided against as a circle except the rect-shaped obstacles
+// (SLAB, SHARD) and ROTOR (a hub plus swept arms).
 //
 // ── the visual language ─────────────────────────────────────────────────────
 //
@@ -14,137 +15,143 @@
 //   O  collectable — bank it
 //   X  obstacle    — it will cost you a life
 //
-// Temperature names the family a second time, so it reads at a glance and does
-// not depend on picking out a shape at speed:
-//   cool  collectable. Hue is identity only — a MOTE is not "more mint" than a
-//         DRIFTER is blue, they are just the still one and the moving one.
-//   warm  obstacle. Hue is *not* identity: it names the gate, the one thing
-//         that gets you past it. Two obstacles with the same gate share a hue.
+// Colour names it a second time, so it reads at a glance without having to pick
+// a shape out at speed:
+//   cool   collectable. Mint sits still, blue moves. That is all hue means here.
+//   red    obstacle. One hue, because there is now only one answer to an
+//          obstacle: do not touch it.
+//   orange a shield, and the boosted ball that strips it. Orange is not a
+//          family — it is a *state*, and it means the same thing wherever it
+//          appears: this is the thing boost is for.
 //
-// Every breakable obstacle wears a shield, and the shield says what opens it —
-// see SHIELDS. There are two kinds and they look nothing alike:
-//   boost shield  violet, solid. Stripped by a boosted ball.
-//   ghost shield  gold, dotted. Stripped by a ghosted ball — one drifting with
-//                 nobody holding the glass.
+// The ball is the only thing on the field that changes colour, and colour alone
+// is how it says what it is doing — no rings, no dots, no outline:
+//   orange  boosting. It is flying, and it strips a shield.
+//   violet  drifting, because nobody is holding the glass. Slower, easier to
+//           aim with, and it strips nothing.
+//   ink     neither.
 //
-// The ball is the only thing that carries a state, and it wears it: violet
-// while it is boosting, gold while it is ghosting, ink otherwise. So the ball's
-// colour is always the shield it can strip, and nothing else on the field
-// changes colour to say so — the line stays ink throughout.
+// The line never changes at all. It is a faded dotted rail between the paddles
+// and it reports nothing.
 
 export const PALETTE = {
   ink: '#e9ecef',
-  ring: '#b98cff',   // the boosted ball, and the shield only it can strip
+  // The boosted ball, its trail, and every shield in the game. One colour for
+  // one idea: boost is the only key, and this is what it looks like.
+  boost: '#ff9633',
+  // The drifting ball. Deliberately not warm — it strips nothing, so it must
+  // not read as a key.
+  drift: '#b98cff',
+  // Every obstacle, always.
+  hazard: '#ff4a55',
 };
 
-// Warm. The key is the gate an obstacle carries, so an obstacle cannot be given
-// a colour that disagrees with how it actually opens — the colour is derived.
-export const GATES = {
-  never:    { color: '#ff4a55', label: 'nothing gets through' },
-  boosted:  { color: '#ff9633', label: 'a boosted ball' },
-  handsOff: { color: '#ffcf3d', label: 'both fingers off the glass' },
-  dark:     { color: '#ff5fa8', label: 'its dark window' },
-};
-
-// Cool. Identity only.
+// Cool. Identity only: mint is a piece that sits still, blue is one that moves.
 export const COOL = {
   mint: '#8ef0d0',
   blue: '#48a8f0',
 };
 
-// The two shields. A shield is broken by the state it is drawn in: violet is
-// the boosted ball, dotted gold is a line nobody is holding.
-export const SHIELDS = {
-  boost: {
-    key: 'boost', color: PALETTE.ring, dotted: false,
-    label: 'a boosted ball',
-    breaks: (w) => !!w.boosted,
-  },
-  ghost: {
-    key: 'ghost', color: GATES.handsOff.color, dotted: true,
-    label: 'a ghosted ball — drifting, nobody holding',
-    breaks: (w) => !!w.ghosted,
-  },
+// There is exactly one shield, and one thing that opens it. It is drawn in the
+// colour of the ball that strips it, so the ring and the key are the same
+// substance — that is the whole rule.
+export const SHIELD = {
+  color: PALETTE.boost,
+  label: 'a boosted ball',
 };
 
-export const isWarm = (c) => Object.values(GATES).some((g) => g.color === c);
+export const isWarm = (c) => c === PALETTE.hazard || c === PALETTE.boost;
 export const isCool = (c) => Object.values(COOL).includes(c);
 
-// The three states the ball can be in, and the colour each one wears. A state
-// is exactly the shield it can strip, so the ball's colour is a live readout of
-// what it is currently able to break.
+// The three states the ball can be in, and the colour each one wears. Only one
+// of them is a key: orange strips a shield, and nothing else does.
 export const BALL_STATES = ['boost', 'ghost', 'normal'];
 
 export function ballColorFor(state) {
-  if (state === 'boost') return SHIELDS.boost.color;
-  if (state === 'ghost') return SHIELDS.ghost.color;
+  if (state === 'boost') return PALETTE.boost;
+  if (state === 'ghost') return PALETTE.drift;
   return PALETTE.ink;
 }
 
-// Collectables carry no rings and no conditions. Touch one and it is banked.
-// All of the game's depth is on the obstacle side, which is also where all of
-// the points are — a collectable is tempo and multiplier fuel, not income.
+// Does the ball strip a shield in this state? One question, one answer.
+export const shieldBreaks = (world) => !!world.boosted;
+
+// ── collectables ────────────────────────────────────────────────────────────
+//
+// All of the game's points are here. The plain two are tempo — touch and bank.
+// The shielded three are the income, and they are the only reason to boost:
+// each good pass strips `power` layers, and the pass that takes the last one
+// also banks the piece.
+//
+// The shielded variants differ in exactly one number, so the ring count you can
+// see is the whole story. They are worth steeply more than the layer count
+// alone would suggest, because standing a line still over one for several
+// passes is time spent not dodging.
 export const COLLECTABLES = {
   mote: {
     key: 'mote', cls: 'col', label: 'MOTE', color: COOL.mint,
-    value: 60, r: 10,
+    value: 60, r: 10, hp: 0,
     blurb: 'Sits still and waits. Steer the line across it and it is banked — no rings, no boost, no timing.',
     hint: 'All it asks is that the two of you can put the line where you want it.',
   },
   drifter: {
     key: 'drifter', cls: 'col', label: 'DRIFTER', color: COOL.blue,
-    value: 140, r: 10, speed: 52,
-    blurb: 'The same mote, wandering. It bounces off the walls and never stops; the stub on its back points where it has come from.',
+    value: 140, r: 10, hp: 0, speed: 52,
+    blurb: 'The same mote, wandering — blue because it moves. It bounces off the walls and never stops; the stub on its back points where it has come from.',
     hint: 'Lead it. Park the line where it is going, not where it is — or boost to close the gap.',
   },
+  ward: {
+    key: 'ward', cls: 'col', label: 'WARD', color: COOL.mint,
+    value: 260, r: 13, hp: 1,
+    blurb: 'A mote with one orange ring around it. A plain ball passes straight through and does nothing; one boosted pass takes the ring and banks it in the same touch.',
+    hint: 'The gentlest thing to practise the lift on — a single well-aimed shove is the whole piece.',
+  },
+  shell: {
+    key: 'shell', cls: 'col', label: 'SHELL', color: COOL.mint,
+    value: 520, r: 15, hp: 2,
+    blurb: 'The same idea behind two rings. Two boosted passes at power 1, and the second one banks it.',
+    hint: 'Take turns lifting, so the ball is orange running in both directions.',
+  },
+  vault: {
+    key: 'vault', cls: 'col', label: 'VAULT', color: COOL.mint,
+    value: 900, r: 17, hp: 3,
+    blurb: 'Three rings, and the biggest payout on the field. Nothing about it is dangerous — it just takes long enough that whatever else is on the field becomes the problem.',
+    hint: 'Worth committing to, but look at what is wandering nearby before you park the line.',
+  },
 };
 
-// An obstacle is two things: a `gate`, which decides when it is lethal and
-// therefore what colour it wears, and a `shield`, which decides what strips a
-// layer. For BRITTLE and PHANTOM those are the same condition — if it is safe
-// to touch, the touch counts. The PULSAR is the one that separates them: a
-// timing gate over a boost shield.
+// ── obstacles ───────────────────────────────────────────────────────────────
+//
+// Every obstacle is the same proposition: red, unbreakable, worth nothing, and
+// lethal on contact. They carry no shields and no gates — there is nothing to
+// learn about them beyond where they are and where they are going.
 export const OBSTACLES = {
   slab: {
-    key: 'slab', cls: 'obs', label: 'SLAB', gate: 'never',
+    key: 'slab', cls: 'obs', label: 'SLAB', shape: 'rect',
     value: 0, hp: 0,
-    blurb: 'Red, and no shield on it — nothing to strip and no state that opens it. Move the line around it.',
-    hint: 'Pure avoidance. Costs a life every time.',
+    blurb: 'A long red bar that sits exactly where it landed. Nothing strips it and nothing gets through it.',
+    hint: 'Pure avoidance. Swing the line around the end of it.',
+  },
+  shard: {
+    key: 'shard', cls: 'obs', label: 'SHARD', shape: 'rect',
+    value: 0, hp: 0, speed: 46,
+    blurb: 'A slab the size of a chip, loose on the field. It drifts, bounces off the walls and never stops — same red, same answer, but it comes to you.',
+    hint: 'Small enough to lose track of. Watch where it is heading, not where it is.',
   },
   rotor: {
-    key: 'rotor', cls: 'obs', label: 'ROTOR', gate: 'never',
+    key: 'rotor', cls: 'obs', label: 'ROTOR', shape: 'rotor',
     value: 0, hp: 0, armLen: 44, spin: 1.5,
-    blurb: 'The same red as the slab, because it has the same answer: none. Hub and both sweeping arms are lethal.',
+    blurb: 'A hub with two sweeping arms. The arms are exactly as lethal as the hub.',
     hint: 'Cross behind it, never alongside it.',
-  },
-  brittle: {
-    key: 'brittle', cls: 'obs', label: 'BRITTLE', gate: 'boosted', shield: 'boost',
-    value: 430, hp: 3, r: 20,
-    blurb: 'Orange, behind a violet boost shield. Only a boosted ball survives the contact and only a boosted ball strips a layer; arrive at normal pace and it costs a life.',
-    hint: 'Take turns lifting so the ball is violet in both directions.',
-  },
-  phantom: {
-    key: 'phantom', cls: 'obs', label: 'PHANTOM', gate: 'handsOff', shield: 'ghost',
-    value: 700, hp: 2, r: 22, shieldGrows: false,
-    blurb: 'The same shield idea with a different key: dotted gold instead of violet, stripped by a ghosted ball instead of a boosted one. Let go together and the ball slows to a drift and turns gold to match — that is when a pass strips a layer. A finger on the glass and it costs a life.',
-    hint: 'Aim first, then let go. Any shove still running has to finish before the drift starts.',
-  },
-  pulsar: {
-    key: 'pulsar', cls: 'obs', label: 'PULSAR', gate: 'dark', shield: 'boost',
-    value: 340, hp: 2, r: 19, rDark: 10, period: 2.4, duty: 0.55,
-    blurb: 'A boost shield behind a timing window. Lit and wide it is lethal; dark and small it is inert, and that is when a boosted pass strips a layer.',
-    hint: 'Watch the flicker just before it lights — that is your warning.',
   },
 };
 
-export const colorOfGate = (gate) => GATES[gate].color;
-for (const d of Object.values(OBSTACLES)) d.color = colorOfGate(d.gate);
+// One hue for every obstacle, so it cannot be given a colour that disagrees
+// with how it behaves — there is only one behaviour.
+for (const d of Object.values(OBSTACLES)) d.color = PALETTE.hazard;
 
-// What colour is this piece wearing? Fixed for everything — the pulsar changes
-// brightness and size as it breathes, never its hue, because its gate never
-// changes either.
 export function stateColorOf(e) {
-  return e.cls === 'obs' ? colorOfGate(e.gate) : e.color;
+  return e.cls === 'obs' ? PALETTE.hazard : e.color;
 }
 
 export const ALL = { ...COLLECTABLES, ...OBSTACLES };
@@ -159,6 +166,7 @@ function base(def, x, y, S) {
     id: nextId++,
     type: def.key,
     cls: def.cls,
+    shape: def.shape || 'circle',
     color: def.color,
     x, y,
     r: (def.r || 12) * S,
@@ -168,32 +176,38 @@ function base(def, x, y, S) {
     cool: 0,       // re-hit lockout
     ttl: Infinity,
     fade: 0,       // set when expiring, drives the draw-out
+    hp: 0, hpMax: 0,
     dead: false,
   };
+}
+
+function drift(e, speed, S, diff, rng) {
+  const a = rng() * Math.PI * 2;
+  const sp = speed * S * diff.entitySpeed;
+  e.vx = Math.cos(a) * sp;
+  e.vy = Math.sin(a) * sp;
 }
 
 export function makeCollectable(type, x, y, S, diff, rng = Math.random) {
   const def = COLLECTABLES[type];
   const e = base(def, x, y, S);
   e.value = Math.round(def.value * diff.valueScale);
+  e.hpMax = def.hp || 0;
+  e.hp = e.hpMax;
 
-  if (def.speed) {
-    const a = rng() * Math.PI * 2;
-    const sp = def.speed * S * diff.entitySpeed;
-    e.vx = Math.cos(a) * sp;
-    e.vy = Math.sin(a) * sp;
-  }
+  // A shielded piece cannot be allowed to sit there forever: it is the only
+  // collectable on the field while it lives, so a run could otherwise stall
+  // behind one the players cannot get to.
+  if (e.hpMax) e.ttl = diff.collectTtl;
+
+  if (def.speed) drift(e, def.speed, S, diff, rng);
   return e;
 }
 
 export function makeObstacle(type, x, y, S, diff, rng = Math.random) {
   const def = OBSTACLES[type];
   const e = base(def, x, y, S);
-  e.gate = def.gate;
-  e.shield = def.shield || null;
-  e.hpMax = def.hp ? def.hp + (def.shieldGrows === false ? 0 : diff.shieldBonus) : 0;
-  e.hp = e.hpMax;
-  e.value = Math.round(def.value * diff.valueScale);
+  e.value = 0;
   e.ttl = diff.obstacleTtl;
   e.spawnT = 1.2;
 
@@ -204,7 +218,18 @@ export function makeObstacle(type, x, y, S, diff, rng = Math.random) {
       const thin = 15 * S;
       e.w = e.horiz ? long : thin;
       e.h = e.horiz ? thin : long;
-      e.r = Math.max(e.w, e.h) / 2; // used only for spawn spacing
+      e.r = Math.max(e.w, e.h) / 2; // spawn spacing, and the wall-bounce pad
+      break;
+    }
+    case 'shard': {
+      // The slab, chipped down and set loose.
+      e.horiz = rng() < 0.5;
+      const long = 30 * S;
+      const thin = 13 * S;
+      e.w = e.horiz ? long : thin;
+      e.h = e.horiz ? thin : long;
+      e.r = Math.max(e.w, e.h) / 2;
+      drift(e, def.speed, S, diff, rng);
       break;
     }
     case 'rotor': {
@@ -214,23 +239,6 @@ export function makeObstacle(type, x, y, S, diff, rng = Math.random) {
       e.angle = rng() * Math.PI * 2;
       e.spin = def.spin * diff.entitySpeed * (rng() < 0.5 ? -1 : 1);
       e.r = e.armLen;
-      break;
-    }
-    case 'pulsar': {
-      e.period = def.period / diff.entitySpeed;
-      e.duty = def.duty;
-      e.phase = rng() * e.period;
-      e.rBig = def.r * S;
-      e.rSmall = def.rDark * S;
-      e.armed = false;
-      e.r = e.rBig;
-      break;
-    }
-    case 'phantom': {
-      const a = rng() * Math.PI * 2;
-      const sp = 16 * S * diff.entitySpeed;
-      e.vx = Math.cos(a) * sp;
-      e.vy = Math.sin(a) * sp;
       break;
     }
   }
@@ -255,14 +263,6 @@ export function updateEntity(e, dt, bounds) {
   }
 
   if (e.type === 'rotor') e.angle += e.spin * dt;
-
-  if (e.type === 'pulsar') {
-    e.phase = (e.phase + dt) % e.period;
-    const lit = e.phase < e.period * e.duty;
-    e.warn = !lit && (e.period - e.phase) < 0.4;
-    e.armed = lit;
-    e.r = lit ? e.rBig : e.rSmall;
-  }
 
   if (e.ttl !== Infinity) {
     e.ttl -= dt;
@@ -292,11 +292,11 @@ function circleRect(cx, cy, cr, rx, ry, rw, rh) {
 export function hitTest(e, x, y, br) {
   if (e.dead || e.spawnT > 0) return false;
 
-  if (e.type === 'slab') {
+  if (e.shape === 'rect') {
     return circleRect(x, y, br, e.x - e.w / 2, e.y - e.h / 2, e.w, e.h);
   }
 
-  if (e.type === 'rotor') {
+  if (e.shape === 'rotor') {
     for (let i = 0; i < 2; i++) {
       const th = e.angle + i * Math.PI;
       const nx = e.x + Math.cos(th) * e.armLen;
@@ -310,31 +310,18 @@ export function hitTest(e, x, y, br) {
   return (x - e.x) ** 2 + (y - e.y) ** 2 < rr * rr;
 }
 
-// Is this obstacle lethal to touch right now? Exactly one condition per gate,
-// and the gate is what picks the colour it is wearing.
-export function isLethal(e, world) {
-  switch (e.gate) {
-    case 'never':    return true;
-    case 'boosted':  return !world.boosted;
-    case 'handsOff': return !world.handsOff;
-    case 'dark':     return !!e.armed;
-    default:         return false;
-  }
-}
+// Every obstacle is lethal, always. Kept as a function because it is the one
+// rule the whole warm half of the palette stands on.
+export const isLethal = (e) => e.cls === 'obs';
 
-// Does this pass strip a layer? Each shield is broken by the state it is drawn
-// in, so the picture is the rule.
-export function shieldBreaks(e, world) {
-  const s = SHIELDS[e.shield];
-  return !!s && s.breaks(world);
+// How a contact with a collectable resolves.
+//   'collect' — bank it
+//   'damage'  — a layer comes off the shield
+//   'pass'    — the ball goes through and nothing happens
+//
+// A collectable can never hurt you, so there is no fourth answer. An unboosted
+// ball simply does not interact with a shielded one.
+export function resolveCollectable(e, world) {
+  if (e.hp > 0) return shieldBreaks(world) ? 'damage' : 'pass';
+  return 'collect';
 }
-
-// How a contact resolves.
-//   'kill'   — the players lose a life
-//   'damage' — a layer comes off the shield
-//   'pass'   — the ball goes through and nothing happens
-export function resolveObstacle(e, world) {
-  if (isLethal(e, world)) return 'kill';
-  return e.hp > 0 && shieldBreaks(e, world) ? 'damage' : 'pass';
-}
-

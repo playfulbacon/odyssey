@@ -2,7 +2,7 @@
 // The UI never touches the simulation directly — it calls back into App.
 
 import { CFG, UPGRADES, upgradeCost, derived, difficulty } from './config.js';
-import { COLLECTABLES, OBSTACLES, GATES, SHIELDS } from './entities.js';
+import { COLLECTABLES, OBSTACLES, SHIELD } from './entities.js';
 import { sfx } from './audio.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -89,16 +89,17 @@ export class UI {
         card.type = 'button';
         const glyph = d.cls === 'col' ? 'O' : 'X';
         const pay = d.value ? `${d.value} pts` : 'no points';
-        const sh = SHIELDS[d.shield];
-        const meta = `${d.hp ? `${d.hp}-layer ${sh.key} shield · ` : ''}${pay}`;
-        const need = d.cls === 'col' ? 'any touch at all' : GATES[d.gate].label;
+        const meta = `${d.hp ? `${d.hp}-ring shield · ` : ''}${pay}`;
+        const need = d.cls === 'obs'
+          ? 'nothing — every obstacle is lethal on contact'
+          : d.hp
+            ? `<span style="color:${SHIELD.color}">${SHIELD.label}</span>, once per ring`
+            : 'any touch at all';
         card.innerHTML =
           `<div class="row"><span class="nm"><i class="glyph" style="color:${d.color}">${glyph}</i>${d.label}</span>` +
           `<span class="meta">${meta}</span></div>` +
           `<div class="bl">${d.blurb}</div>` +
-          `<div class="bl need">safe to touch with — ${need}` +
-          (sh ? `<br />shield stripped by — <span style="color:${sh.color}">${sh.label}</span>` : '') +
-          `</div>` +
+          `<div class="bl need">${d.cls === 'obs' ? 'gets you through' : 'takes it'} — ${need}</div>` +
           `<div class="bl" style="opacity:.62">${d.hint}</div>`;
         card.addEventListener('click', () => this.app.startPlayground(d.key));
         host.appendChild(card);
@@ -121,11 +122,19 @@ export class UI {
       stat('BALL POWER', d.power) +
       stat('THREAT', `${diff.maxObstacles} max`);
 
-    const known = diff.obstaclePool.map((k) => OBSTACLES[k].label);
-    const isNew = run > 1 && diff.obstaclePool.length > difficulty(run - 1).obstaclePool.length;
-    $('#brief-note').innerHTML = isNew
-      ? `<b>NEW:</b> ${OBSTACLES[diff.obstaclePool[diff.obstaclePool.length - 1]].label} joins the field. In play: ${known.join(' · ')}.`
-      : `In play: ${known.join(' · ')}.`;
+    // Escalation lands on both pools now — a run can bring a new obstacle, a
+    // new collectable, or one more ring to boost through — so announce whatever
+    // actually turned up rather than assuming it is an obstacle.
+    const prev = run > 1 ? difficulty(run - 1) : null;
+    const label = (k) => (COLLECTABLES[k] || OBSTACLES[k]).label;
+    const pool = [...diff.collectPool, ...diff.obstaclePool];
+    const fresh = prev
+      ? pool.filter((k) => ![...prev.collectPool, ...prev.obstaclePool].includes(k))
+      : [];
+    const known = `In play: ${pool.map(label).join(' · ')}.`;
+    $('#brief-note').innerHTML = fresh.length
+      ? `<b>NEW:</b> ${fresh.map(label).join(' and ')} joins the field. ${known}`
+      : known;
     this.show('brief');
   }
 
