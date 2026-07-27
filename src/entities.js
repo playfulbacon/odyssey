@@ -28,8 +28,10 @@
 //   INK    the ball at rest, the paddles, a held half of the line.
 //
 // And the line itself is the readout for the one state the ball does not wear:
-// a half you are not touching turns the PHANTOM's gold, both halves lit means
-// the phantom is open. See lineColorFor().
+// a half you are not touching breaks into a faded gold dotted line, and both
+// halves dotted means the PHANTOM is open. The phantom wears that same faded
+// gold dotted outline, and brightens on the same cue, because it is the same
+// idea drawn twice. See lineColorFor() and handsOffStroke() in render.js.
 
 export const PALETTE = {
   ink: '#e9ecef',
@@ -108,7 +110,7 @@ export const OBSTACLES = {
   phantom: {
     key: 'phantom', cls: 'obs', label: 'PHANTOM', gate: 'handsOff',
     value: 700, hp: 1, r: 22, armourGrows: false,
-    blurb: 'Gold, the colour your half of the line turns the moment you let go. With both of you off the glass it is harmless — and a boosted ball in that same window destroys it outright.',
+    blurb: 'A dotted gold outline — the same faded dotted gold your half of the line turns the moment you let go. Both of you off the glass and it brightens and turns harmless; a boosted ball in that same window destroys it outright.',
     hint: 'Aim first. One of you lifts, then the other, before the shove dies.',
   },
   pulsar: {

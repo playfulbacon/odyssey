@@ -21,7 +21,8 @@ constantly.
 **Lift** your finger to shove the ball away from you. For a moment it flies. A
 lift does nothing to a ball coming the other way, and if you both lift at once
 the two shoves cancel out. While your finger is off the glass your half of the
-line turns gold — and your paddle is frozen where you left it.
+line breaks into a faded gold dotted line — and your paddle is frozen where you
+left it.
 
 ## Reading the field
 
@@ -38,7 +39,7 @@ Two obstacles that open the same way look the same, and an obstacle's colour is
 |---|---|
 | **red** | nothing gets through. Ever. |
 | **orange** | safe only to a boosted ball. |
-| **gold** | safe only with both fingers off the glass. |
+| **gold, dotted** | safe only with both fingers off the glass. |
 | **pink** | safe only during its dark window. |
 
 Two colours belong to neither family, and they are the two that carry rules:
@@ -50,8 +51,12 @@ Two colours belong to neither family, and they are the two that carry rules:
 
 The ball reports one thing and one thing only: violet means it can break a ring.
 The other state lives on **the line**, which is where it belongs — each half
-reports its own player. A half nobody is holding turns gold, and when both
-halves are gold the PHANTOM is open. That is why they are the same colour.
+reports its own player. A half nobody is holding breaks into a faded gold dotted
+line, and when both halves have, the PHANTOM is open and the line brightens.
+
+The phantom wears that exact treatment: a faded gold dotted outline that
+brightens on the same cue. Both come from a single `handsOffStroke()`, so it is
+not a resemblance that has to be maintained — it is one definition drawn twice.
 
 ## Pieces
 
@@ -75,7 +80,7 @@ nowhere else.
 | **ROTOR** | red | — | — | nothing, and it sweeps toward you. |
 | **BRITTLE** | orange | 3 | 430 | a boosted ball. |
 | **PULSAR** | pink | 2 | 340 | anything, during its dark window. |
-| **PHANTOM** | gold | 1 | 700 | both fingers off the glass. |
+| **PHANTOM** | dotted gold | 1 | 700 | both fingers off the glass. |
 
 The PULSAR is the timing one: lit and wide it kills, dark and small it is inert.
 It never changes hue, because its gate never changes — only the window does.

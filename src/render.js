@@ -14,6 +14,7 @@ import { PALETTE, GATES, stateColorOf, ballColorFor, lineColorFor } from './enti
 const INK = PALETTE.ink;
 const RING = PALETTE.ring;
 const RED = GATES.never.color;
+const GOLD = GATES.handsOff.color;
 const DIM = '#6d737b';
 const BG = '#08090b';
 const TAU = Math.PI * 2;
@@ -41,6 +42,19 @@ const fmtTime = (s) => {
   const t = Math.max(0, Math.ceil(s));
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 };
+
+// The hands-off language, in one place so it cannot drift apart. Gold and
+// dotted, faded while the state is only half true and bright the moment it is
+// live. Worn by a half of the line nobody is holding and by the PHANTOM, the
+// obstacle that state opens — they should look like the same idea because they
+// are the same idea.
+export function handsOffStroke(ctx, S, live) {
+  ctx.strokeStyle = GOLD;
+  ctx.globalAlpha *= live ? 0.95 : 0.45;
+  ctx.lineWidth = (live ? 2 : 1.6) * S;
+  ctx.lineCap = 'round';
+  ctx.setLineDash([1.5 * S, 4.5 * S]);
+}
 
 // ── the two family glyphs ───────────────────────────────────────────────────
 
@@ -144,16 +158,20 @@ function drawTerritory(ctx, g) {
 }
 
 // Two halves, so each player can see at a glance whether their own finger is
-// down. A released half turns the PHANTOM's gold; when both halves are gold the
-// phantom is open, and the line says so from end to end.
+// down. A held half is solid ink; a released one breaks into the dotted gold of
+// the PHANTOM, and goes bright when both halves have.
 function drawLine(ctx, g, A, B) {
   const M = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
   const open = g.input.handsOff;
   const seg = (P, Q, on) => {
     ctx.save();
-    ctx.globalAlpha = on ? 0.92 : open ? 0.95 : 0.42;
-    ctx.strokeStyle = lineColorFor(on);
-    ctx.lineWidth = (on ? 1.4 : open ? 1.7 : 1.1) * g.S;
+    if (on) {
+      ctx.globalAlpha = 0.92;
+      ctx.strokeStyle = lineColorFor(true);
+      ctx.lineWidth = 1.4 * g.S;
+    } else {
+      handsOffStroke(ctx, g.S, open);
+    }
     ctx.beginPath();
     ctx.moveTo(P.x, P.y); ctx.lineTo(Q.x, Q.y);
     ctx.stroke();
@@ -347,15 +365,19 @@ function drawObstacle(ctx, g, e) {
     case 'phantom': {
       const open = g.input.handsOff && g.phase === 'play';
       segRing(ctx, e.x, e.y, e.r + 3 * S, e.hpMax, e.hp, S, 2.7);
-      ctx.globalAlpha = baseA * (open ? 0.28 : 0.08);
+      ctx.globalAlpha = baseA * (open ? 0.24 : 0.06);
       pathO(ctx, e.x, e.y, e.r * 0.78); ctx.fill();
-      // Dashed while it is out of reach, solid the moment you both let go.
-      ctx.globalAlpha = baseA * (open ? 1 : 0.5);
-      ctx.setLineDash(open ? [] : [3 * S, 4 * S]);
-      ctx.lineWidth = 1.5 * S;
+      // The same dotted gold as a half of the line nobody is holding, and it
+      // brightens on exactly the same cue.
+      ctx.globalAlpha = baseA;
+      handsOffStroke(ctx, S, open);
       pathO(ctx, e.x, e.y, e.r * 0.78); ctx.stroke();
       ctx.setLineDash([]);
+      ctx.lineCap = 'butt';
+      // The X stays solid: dotting away the family glyph would cost more than
+      // the consistency is worth.
       ctx.globalAlpha = baseA * (open ? 1 : 0.6);
+      ctx.strokeStyle = col;
       ctx.lineWidth = 2 * S;
       pathX(ctx, e.x, e.y, e.r * 0.5); ctx.stroke();
       break;
