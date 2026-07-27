@@ -2,7 +2,7 @@
 // The UI never touches the simulation directly — it calls back into App.
 
 import { CFG, UPGRADES, upgradeCost, derived, difficulty } from './config.js';
-import { COLLECTABLES, OBSTACLES, SHIELD } from './entities.js';
+import { GOLD, ENEMIES, OBSTACLES, ALL, PALETTE } from './entities.js';
 import { sfx } from './audio.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -84,28 +84,43 @@ export class UI {
     const fill = (host, defs) => {
       host.innerHTML = '';
       for (const d of defs) {
-        if (d.hidden) continue;
         const card = el('button', 'card');
         card.type = 'button';
-        const glyph = d.cls === 'col' ? 'O' : 'X';
-        const pay = d.value ? `${d.value} pts` : 'no points';
-        const meta = `${d.hp ? `${d.hp}-ring shield · ` : ''}${pay}`;
-        const need = d.cls === 'obs'
-          ? 'nothing — every obstacle is lethal on contact'
-          : d.hp
-            ? `<span style="color:${SHIELD.color}">${SHIELD.label}</span>, once per ring`
+
+        // Each family is asked a different question, so each card answers a
+        // different one. Gold: what is it worth. Enemy: how hard is it and how
+        // do you get in. Obstacle: nothing, there is nothing to know.
+        let glyph = 'X', meta = '', need = '';
+        if (d.cls === 'gold') {
+          glyph = 'O';
+          meta = d.charges ? `${d.charges} charges · ${d.charges * d.yield} motes` : `${d.gold} gold`;
+          need = d.charges
+            ? `<span style="color:${PALETTE.boost}">a boosted ball</span>, once per charge`
             : 'any touch at all';
+        } else if (d.cls === 'enemy') {
+          glyph = String(d.strength);
+          meta = `strength ${d.strength} · ${d.value} pts`;
+          need = d.weak === 0
+            ? 'any contact, if your ball is strong enough'
+            : `<span style="color:${PALETTE.boost}">a boosted ball through the weak point</span>, ` +
+              `entering from the ${d.weak === 1 ? 'one end it faces' : 'end each point faces'}`;
+        } else {
+          meta = 'no points, no way through';
+          need = 'nothing. It only ever costs you health.';
+        }
+
         card.innerHTML =
           `<div class="row"><span class="nm"><i class="glyph" style="color:${d.color}">${glyph}</i>${d.label}</span>` +
           `<span class="meta">${meta}</span></div>` +
           `<div class="bl">${d.blurb}</div>` +
-          `<div class="bl need">${d.cls === 'obs' ? 'gets you through' : 'takes it'} — ${need}</div>` +
+          `<div class="bl need">${d.cls === 'obs' ? 'gets you through' : 'opens it'} — ${need}</div>` +
           `<div class="bl" style="opacity:.62">${d.hint}</div>`;
         card.addEventListener('click', () => this.app.startPlayground(d.key));
         host.appendChild(card);
       }
     };
-    fill($('#pg-collectables'), Object.values(COLLECTABLES));
+    fill($('#pg-gold'), Object.values(GOLD));
+    fill($('#pg-enemies'), Object.values(ENEMIES));
     fill($('#pg-obstacles'), Object.values(OBSTACLES));
   }
 
@@ -115,22 +130,20 @@ export class UI {
     const d = derived(upgrades);
     const diff = difficulty(run);
     $('#brief-eyebrow').textContent = `RUN ${run}`;
-    $('#brief-title').textContent = `REACH ${CFG.run.target(run).toLocaleString()}`;
+    $('#brief-title').textContent = `${CFG.run.target(run).toLocaleString()} POINTS`;
     $('#brief-stats').innerHTML =
       stat('TIME', `${d.time}s`) +
       stat('LIVES', d.lives) +
-      stat('BALL POWER', d.power) +
-      stat('THREAT', `${diff.maxObstacles} max`);
+      stat('HEALTH', d.health) +
+      stat('STRENGTH', `${d.strength} / ${d.strength + d.boostStrength}`);
 
-    // Escalation lands on both pools now — a run can bring a new obstacle, a
-    // new collectable, or one more ring to boost through — so announce whatever
-    // actually turned up rather than assuming it is an obstacle.
+    // Escalation lands anywhere — a new hazard, a new seam, a new enemy — so
+    // announce whatever actually turned up rather than guessing the family.
     const prev = run > 1 ? difficulty(run - 1) : null;
-    const label = (k) => (COLLECTABLES[k] || OBSTACLES[k]).label;
-    const pool = [...diff.collectPool, ...diff.obstaclePool];
-    const fresh = prev
-      ? pool.filter((k) => ![...prev.collectPool, ...prev.obstaclePool].includes(k))
-      : [];
+    const label = (k) => ALL[k].label;
+    const spread = (x) => [...x.goldPool, ...x.enemyPool, ...x.obstaclePool];
+    const pool = spread(diff);
+    const fresh = prev ? pool.filter((k) => !spread(prev).includes(k)) : [];
     const known = `In play: ${pool.map(label).join(' · ')}.`;
     $('#brief-note').innerHTML = fresh.length
       ? `<b>NEW:</b> ${fresh.map(label).join(' and ')} joins the field. ${known}`
@@ -143,9 +156,9 @@ export class UI {
   showShop(app, result) {
     $('#shop-eyebrow').textContent = `RUN ${result.run} CLEARED`;
     $('#shop-summary').innerHTML =
-      stat('SCORED', result.score.toLocaleString(), 'good') +
+      stat('POINTS', result.score.toLocaleString(), 'good') +
       stat('TARGET', result.target.toLocaleString()) +
-      stat('TIME BONUS', `+${result.bonus.toLocaleString()}`, 'good') +
+      stat('GOLD DUG', `+${result.gold.toLocaleString()}`, 'good') +
       stat('NEXT TARGET', CFG.run.target(result.run + 1).toLocaleString());
     this.renderShopList(app);
     this.show('shop');

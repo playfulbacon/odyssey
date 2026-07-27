@@ -9,7 +9,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { difficulty, emptyUpgrades } from '../src/config.js';
-import { PALETTE, SHIELD, makeCollectable, makeObstacle } from '../src/entities.js';
+import { PALETTE, GOLD, ENEMIES, OBSTACLES, makeGold, makeEnemy, makeObstacle,
+  WEAK_HALF, weakAngle } from '../src/entities.js';
 import { Game } from '../src/game.js';
 import { render, railHeat, RAIL_DOT } from '../src/render.js';
 
@@ -34,6 +35,7 @@ function recorder() {
     setLineDash(d) { st.dash = [...d]; },
     translate() {}, rotate() {}, clip() {},
     beginPath() { pts = []; },
+    closePath() {},
     moveTo(x, y) { pts.push([x, y]); },
     lineTo(x, y) { pts.push([x, y]); },
     rect(x, y) { pts.push([x, y]); },
@@ -66,7 +68,7 @@ function frameWith(type, aTouch, bTouch, ballState = 'normal') {
   g.phase = 'play';
   g.ball.state = ballState;
   g.entities.length = 0;
-  const make = type in { slab: 1, shard: 1, rotor: 1 } ? makeObstacle : makeCollectable;
+  const make = type in OBSTACLES ? makeObstacle : type in ENEMIES ? makeEnemy : makeGold;
   const e = make(type, 200, 400, 1, difficulty(1));
   e.spawnT = 0;
   g.entities.push(e);
@@ -279,54 +281,72 @@ test('a boosting ball leaves an orange trail behind it', () => {
 
 // ── shields ─────────────────────────────────────────────────────────────────
 
-test('a shield is orange and solid, wherever it appears', () => {
-  for (const [type, rings] of [['ward', 1], ['shell', 2], ['vault', 3]]) {
-    const ops = strokes(frameWith(type, true, true), SHIELD.color);
-    assert.equal(ops.length, rings, `${type} draws one arc per ring`);
-    for (const o of ops) assert.equal(o.dash.length, 0, `${type}: a shield is never dotted`);
+test('a shield is steel everywhere except its weak points, which are orange', () => {
+  for (const [type, holes] of [['cyclops', 1], ['janus', 2]]) {
+    const ops = frameWith(type, true, true);
+    const plate = strokes(ops, PALETTE.plate);
+    const weak = strokes(ops, PALETTE.boost);
+    assert.ok(plate.length >= 1, `${type}: the ring is plated`);
+    // One arc per hole, plus one stub per hole pointing the way in.
+    assert.equal(weak.length, holes * 2, `${type}: ${holes} hole(s), drawn once each plus a stub`);
+    for (const o of [...plate, ...weak]) assert.equal(o.dash.length, 0, `${type}: solid`);
   }
 });
 
-test('the shield is drawn in exactly the colour of the ball that strips it', () => {
-  const ring = strokes(frameWith('shell', true, true), SHIELD.color);
-  const ball = fills(bare(true, true, 'boost'), PALETTE.boost);
-  assert.ok(ring.length && ball.length, 'both were drawn');
-  assert.equal(ring[0].strokeStyle, ball[0].fillStyle, 'ring and key are the same substance');
+test('an unshielded enemy has no ring at all', () => {
+  const ops = frameWith('drone', true, true);
+  assert.equal(strokes(ops, PALETTE.plate).length, 0, 'no plating');
+  assert.equal(strokes(ops, PALETTE.boost).length, 0, 'and no weak point to aim at');
 });
 
-test('spent rings stay on screen, dimmed, so the depth is always readable', () => {
+test('an enemy wears its strength, and the ball wears its own', () => {
+  const ops = frameWith('cyclops', true, true);
+  const label = ops.filter((o) => o.op === 'text' && o.fillStyle === PALETTE.enemy);
+  assert.ok(label.length >= 1, 'the enemy is labelled in its own colour');
+
+  // The ball's numeral is punched out of the fill, so it is drawn in the
+  // background colour and cannot be mistaken for a piece on the field.
+  const ball = bare(true, true, 'normal').filter((o) => o.op === 'text' && o.fillStyle === '#08090b');
+  assert.equal(ball.length, 1, 'exactly one numeral on the ball');
+});
+
+test('nothing on the field is ever painted the boost colour except a weak point', () => {
+  for (const type of ['mote', 'ore', 'drone', 'slab', 'shard', 'rotor']) {
+    const ops = frameWith(type, true, true);
+    assert.equal(strokes(ops, PALETTE.boost).length, 0, `${type} strokes`);
+    assert.equal(fills(ops, PALETTE.boost).length, 0, `${type} fills`);
+  }
+});
+
+test('gold is gold and nothing else is', () => {
+  for (const type of Object.keys(GOLD)) {
+    assert.ok(fills(frameWith(type, true, true), PALETTE.gold).length >= 1, type);
+  }
+  for (const type of [...Object.keys(ENEMIES), ...Object.keys(OBSTACLES)]) {
+    const ops = frameWith(type, true, true);
+    assert.equal(fills(ops, PALETTE.gold).length, 0, `${type} fills`);
+    assert.equal(strokes(ops, PALETTE.gold).length, 0, `${type} strokes`);
+  }
+});
+
+test('an ore shows one notch per charge, spent ones included', () => {
   const input = stubInput(true, true);
   const g = new Game({}, input, {});
   g.resize(400, 800, 1);
-  g.startPlayground('vault');
+  g.startPlayground('ore');
   g.phase = 'play';
   g.entities.length = 0;
-  const e = makeCollectable('vault', 200, 400, 1, difficulty(1));
+  const e = makeGold('ore', 200, 400, 1, difficulty(1));
   e.spawnT = 0;
-  e.hp = 1;                       // two of three already stripped
+  e.charges = 1;                    // two of three already knocked out
   g.entities.push(e);
 
   const { ctx, ops } = recorder();
   render(ctx, g);
-  const arcs = strokes(ops, SHIELD.color);
-  assert.equal(arcs.length, 3, 'all three arcs are still drawn');
-  const bright = arcs.filter((o) => o.globalAlpha > 0.5);
-  assert.equal(bright.length, 1, 'but only the ring that is left is lit');
-});
-
-test('an obstacle wears no shield colour at all', () => {
-  for (const type of ['slab', 'shard', 'rotor']) {
-    const ops = frameWith(type, true, true);
-    assert.equal(strokes(ops, SHIELD.color).length, 0, `${type} has nothing to strip`);
-    assert.equal(fills(ops, SHIELD.color).length, 0, type);
-    assert.ok(strokes(ops, PALETTE.hazard).length >= 1, `${type} is red`);
-  }
-});
-
-test('a plain collectable wears no rings', () => {
-  for (const type of ['mote', 'drifter']) {
-    assert.equal(strokes(frameWith(type, true, true), SHIELD.color).length, 0, type);
-  }
+  const notches = arcs(ops).filter((o) => o.op === 'fill' && o.fillStyle === PALETTE.gold
+    && Math.abs(o.pts[0][2] - 2.1) < 1e-6);
+  assert.equal(notches.length, e.chargesMax, 'all three notches are drawn');
+  assert.equal(notches.filter((o) => o.globalAlpha > 0.5).length, 1, 'but only one is lit');
 });
 
 test('the run HUD renders without touching anything undefined', () => {

@@ -1,23 +1,20 @@
 // Rules tests for the parts of the prototype that are easy to break silently:
-// the colour language, ring depletion, the life-loss respawn side and the run
-// economy. Pure logic — no DOM, no canvas.
+// the colour language, the strength comparison, the directional weak point, the
+// two resources and the health/lives split. Pure logic — no DOM, no canvas.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { CFG, UPGRADES, upgradeCost, derived, difficulty, emptyUpgrades } from '../src/config.js';
 import {
-  PALETTE, COOL, SHIELD, COLLECTABLES, OBSTACLES, BALL_STATES,
-  isWarm, isCool, ballColorFor, stateColorOf,
-  isLethal, resolveCollectable, shieldBreaks,
-  makeCollectable, makeObstacle, hitTest, updateEntity,
+  PALETTE, GOLD, ENEMIES, OBSTACLES, ALL, BALL_STATES, ballColorFor,
+  WEAK_HALF, weakAngle, admitsDir, weakPointAt, shieldSpans,
+  resolveEnemy, resolveOre, reverses,
+  makeGold, makeLooseMote, makeEnemy, makeObstacle, hitTest, updateEntity,
 } from '../src/entities.js';
 import { Game } from '../src/game.js';
 
 const D1 = difficulty(1);
-
-const SHIELDED = ['ward', 'shell', 'vault'];
-const PLAIN = ['mote', 'drifter'];
 
 function stubInput() {
   const p = () => ({ nx: 0.5, touching: false, boostT: 0, pointerId: null });
@@ -28,296 +25,412 @@ function stubInput() {
   };
 }
 
-function mkGame() {
+function mkGame(run = 1) {
   const g = new Game({}, stubInput(), {});
   g.resize(400, 800, 1);
-  g.startRun(1, emptyUpgrades());
+  g.startRun(run, emptyUpgrades());
   g.phase = 'play';
   return g;
 }
 
-// The world a contact sees. There is only one question left in it: is the ball
-// boosting? That is the only thing that opens anything.
-const WORLDS = [
-  { name: 'plain', boosted: false },
-  { name: 'boosted', boosted: true },
-];
+// Drop a piece on the field, already live, and run the ball into it.
+function put(g, e, opts = {}) {
+  e.spawnT = 0;
+  e.x = 200; e.y = 400;
+  g.entities.push(e);
+  if (opts.boost) g.ball.state = 'boost';
+  if (opts.dir) g.ball.dir = opts.dir;
+  return e;
+}
 
 // ── the colour language ─────────────────────────────────────────────────────
 
-test('cool means collectable, red means obstacle, and the sets do not overlap', () => {
-  for (const d of Object.values(COLLECTABLES)) {
-    assert.ok(isCool(d.color), `${d.key} should be cool`);
-    assert.ok(!isWarm(d.color), `${d.key} must not be warm`);
-  }
-  for (const d of Object.values(OBSTACLES)) {
-    assert.ok(isWarm(d.color), `${d.key} should be warm`);
-    assert.ok(!isCool(d.color), `${d.key} must not be cool`);
-  }
-  for (const c of Object.values(COOL)) {
-    assert.notEqual(c, PALETTE.hazard);
-    assert.notEqual(c, PALETTE.boost);
-  }
+test('every family has one hue and no two families share it', () => {
+  for (const d of Object.values(GOLD)) assert.equal(d.color, PALETTE.gold, d.key);
+  for (const d of Object.values(ENEMIES)) assert.equal(d.color, PALETTE.enemy, d.key);
+  for (const d of Object.values(OBSTACLES)) assert.equal(d.color, PALETTE.hazard, d.key);
+
+  const hues = [PALETTE.gold, PALETTE.enemy, PALETTE.hazard, PALETTE.boost, PALETTE.plate, PALETTE.ink];
+  assert.equal(new Set(hues).size, hues.length, 'no hue does two jobs');
 });
 
-test('every obstacle is the same red, because every obstacle has the same answer', () => {
-  for (const d of Object.values(OBSTACLES)) {
-    assert.equal(d.color, PALETTE.hazard, `${d.key}`);
-    assert.equal(stateColorOf(makeObstacle(d.key, 0, 0, 1, D1)), PALETTE.hazard, `${d.key} live`);
-  }
-});
-
-test('a collectable hue says only whether it moves', () => {
-  for (const d of Object.values(COLLECTABLES)) {
-    assert.equal(d.color, d.speed ? COOL.blue : COOL.mint, `${d.key}`);
-  }
-});
-
-test('orange is one idea: the shield, and the ball that strips it', () => {
-  assert.equal(SHIELD.color, PALETTE.boost);
-  assert.equal(ballColorFor('boost'), SHIELD.color, 'the ring and the key are the same colour');
-});
-
-test('the ball has two states, and only one of them is a key', () => {
+test('orange is boost and boost alone, wherever it turns up', () => {
+  assert.equal(ballColorFor('boost'), PALETTE.boost);
   assert.deepEqual(BALL_STATES, ['boost', 'normal']);
   assert.equal(ballColorFor('normal'), PALETTE.ink);
-  assert.equal(shieldBreaks({ boosted: false }), false, 'ink strips nothing');
-  assert.equal(shieldBreaks({ boosted: true }), true, 'orange is the only thing that does');
+  // Nothing that sits on the field is ever orange — orange is a state, and the
+  // only static thing wearing it is a weak point, which is a hole, not a piece.
+  for (const d of Object.values(ALL)) assert.notEqual(d.color, PALETTE.boost, d.key);
 });
 
-// ── ball state ──────────────────────────────────────────────────────────────
-//
-// One question decides it: is something shoving the ball the way it is already
-// going? Nothing else is consulted — least of all whose fingers are down.
+// ── two resources ───────────────────────────────────────────────────────────
 
-test('a lift shoves whether or not anyone else is holding', () => {
+test('gold and points are separate piles that never feed each other', () => {
   const g = mkGame();
-  g.ball.dir = 1;
+  put(g, makeGold('mote', 0, 0, 1, D1));
+  g._collide(200, 400);
+  assert.ok(g.gold > 0, 'a mote pays gold');
+  assert.equal(g.score, 0, 'and no points at all');
 
-  g.input.boostDir = 1;
-  assert.equal(g._ballState(), 'boost', 'it is this player\'s turn, so it flies');
-  g.input.boostDir = -1;
-  assert.equal(g._ballState(), 'normal', 'a lift never drags an incoming ball');
-  g.input.boostDir = 0;
-  assert.equal(g._ballState(), 'normal', 'and nothing pushing is just nothing');
-
-  // The state is a pure function of the shove and the heading. Touches do not
-  // appear in it at all, so there is nothing a partner can do to veto a shove.
-  g.ball.dir = -1;
-  g.input.boostDir = -1;
-  assert.equal(g._ballState(), 'boost', 'the ball turned round, so the other side is on');
+  const g2 = mkGame();
+  put(g2, makeEnemy('drone', 0, 0, 1, D1));
+  g2._collide(200, 400);
+  assert.ok(g2.score > 0, 'a kill pays points');
+  assert.equal(g2.gold, 0, 'and no gold at all');
 });
 
-test('a boosted ball flies and everything else runs at its own pace', () => {
+test('the run target is points, and gold is what the shop takes', () => {
   const g = mkGame();
-  assert.equal(g._speedMult('normal'), 1);
-  assert.equal(g._speedMult('boost'), CFG.boost.mult);
-  assert.ok(CFG.boost.mult > 1, 'boosting is faster');
-  assert.equal(CFG.ghost, undefined, 'and there is no slow state left');
+  g.gold = 999999;
+  g._updatePlay(0.001);
+  assert.equal(g.active, true, 'gold cannot clear a run');
+  g.score = g.target;
+  g._updatePlay(0.001);
+  assert.equal(g.active, false, 'points can');
 });
 
-// ── collectables ────────────────────────────────────────────────────────────
+// ── gold ────────────────────────────────────────────────────────────────────
 
-test('the collectables are the two plain ones and the 1/2/3-ring variants', () => {
-  assert.deepEqual(Object.keys(COLLECTABLES), [...PLAIN, ...SHIELDED]);
-  assert.deepEqual(SHIELDED.map((k) => COLLECTABLES[k].hp), [1, 2, 3]);
-  for (const k of PLAIN) assert.equal(COLLECTABLES[k].hp, 0, `${k} wears nothing`);
+test('a mote is taken by any touch; ore needs a shove', () => {
+  const plain = mkGame();
+  const ore = put(plain, makeGold('ore', 0, 0, 1, D1));
+  const charges = ore.charges;
+  plain._collide(200, 400);
+  assert.equal(ore.charges, charges, 'a plain ball does nothing to a seam');
+  assert.equal(ore.dead, false);
+
+  const boosted = mkGame();
+  const ore2 = put(boosted, makeGold('ore', 0, 0, 1, D1), { boost: true });
+  boosted._collide(200, 400);
+  assert.equal(ore2.charges, charges - 1, 'a shove takes a charge');
 });
 
-test('the shielded variants differ in exactly one thing: how many rings', () => {
-  const [a, b, c] = SHIELDED.map((k) => COLLECTABLES[k]);
-  for (const d of [a, b, c]) {
-    assert.equal(d.color, COOL.mint, `${d.key} is the same piece underneath`);
-    assert.equal(d.speed, undefined, `${d.key} sits still`);
+test('cracking a charge scatters loose motes worth real gold', () => {
+  const g = mkGame();
+  const ore = put(g, makeGold('ore', 0, 0, 1, D1), { boost: true });
+  g._collide(200, 400);
+
+  const loose = g.entities.filter((e) => e.type === 'mote');
+  assert.equal(loose.length, ore.yield, 'one charge, one scatter');
+  for (const m of loose) {
+    assert.ok(m.gold > 0, 'and every one is worth taking');
+    assert.ok(Math.hypot(m.vx, m.vy) > 0, 'they fly out');
+    assert.ok(m.ttl < Infinity, 'and fade if nobody comes for them');
   }
-  assert.ok(a.value < b.value && b.value < c.value, 'more rings, more points');
 });
 
-test('a ring count is the whole story — it never grows with the run', () => {
-  for (const key of Object.keys(COLLECTABLES)) {
-    for (const run of [1, 5, 20]) {
-      const e = makeCollectable(key, 0, 0, 1, difficulty(run));
-      assert.equal(e.hpMax, COLLECTABLES[key].hp, `${key} at run ${run}`);
-      assert.equal(e.hp, e.hpMax);
-    }
-  }
+test('a seam runs dry after exactly its charges', () => {
+  const g = mkGame();
+  const ore = put(g, makeGold('ore', 0, 0, 1, D1), { boost: true });
+  const n = ore.charges;
+  for (let i = 0; i < n; i++) { ore.cool = 0; g._collide(200, 400); }
+  assert.equal(ore.charges, 0);
+  assert.equal(ore.dead, true);
 });
 
-test('a plain collectable is banked by any touch at all', () => {
-  for (const key of PLAIN) {
-    for (const w of WORLDS) {
+test('gold never turns the ball round and never costs health', () => {
+  for (const type of Object.keys(GOLD)) {
+    for (const boost of [false, true]) {
       const g = mkGame();
-      const e = makeCollectable(key, 200, 400, 1, D1);
-      e.spawnT = 0;
-      g.entities.push(e);
-      g.ball.state = w.boosted ? 'boost' : 'normal';
-      g._collide(e.x, e.y);
-      assert.equal(e.dead, true, `${key}, ${w.name}`);
-      assert.equal(g.score, e.value, `${key}, ${w.name}`);
+      put(g, makeGold(type, 0, 0, 1, D1), { boost });
+      const dir = g.ball.dir, hp = g.health;
+      g._collide(200, 400);
+      assert.equal(g.ball.dir, dir, `${type} boosted=${boost}: kept its heading`);
+      assert.equal(g.health, hp, `${type} boosted=${boost}: kept its health`);
     }
   }
 });
 
-test('a shielded collectable ignores an unboosted ball entirely', () => {
-  for (const key of SHIELDED) {
-    const g = mkGame();
-    const e = makeCollectable(key, 200, 400, 1, D1);
-    e.spawnT = 0;
-    g.entities.push(e);
-    g.ball.state = 'normal';
+// ── strength ────────────────────────────────────────────────────────────────
 
-    for (let i = 0; i < 5; i++) {
-      e.cool = 0;
-      assert.equal(g._collide(e.x, e.y), false, `${key} can never end a life`);
-    }
-    assert.equal(e.hp, e.hpMax, `${key} kept every ring`);
-    assert.equal(e.dead, false);
-    assert.equal(g.score, 0);
-    assert.equal(g.lives, CFG.base.lives, 'and cost nothing');
-  }
-});
-
-test('a boosted pass strips a ring, and the pass that takes the last one banks it', () => {
-  for (const key of SHIELDED) {
-    const g = mkGame();
-    g.power = 1;
-    const e = makeCollectable(key, 200, 400, 1, D1);
-    e.spawnT = 0;
-    g.entities.push(e);
-    g.ball.state = 'boost';
-
-    const rings = e.hpMax;
-    for (let i = 1; i <= rings; i++) {
-      e.cool = 0;
-      g._collide(e.x, e.y);
-      const last = i === rings;
-      assert.equal(e.hp, rings - i, `${key} after pass ${i}`);
-      assert.equal(e.dead, last, `${key} dies only on the last pass`);
-      assert.equal(g.score, last ? e.value : 0, `${key} pays only on the last pass`);
-    }
-  }
-});
-
-test('ball power decides how many rings a single pass takes', () => {
+test('the ball is worth more while a shove is behind it', () => {
   const g = mkGame();
-  g.power = 3;
-  const e = makeCollectable('vault', 200, 400, 1, D1);
-  assert.equal(e.hp, 3);
-  g._strip(e);
-  assert.equal(e.dead, true, 'a heavy enough ball opens it in one pass');
+  assert.equal(g._ballWorld(0, 0).strength, CFG.base.strength);
+  g.ball.state = 'boost';
+  assert.equal(g._ballWorld(0, 0).strength, CFG.base.strength + CFG.base.boostStrength);
+});
+
+test('the bigger number wins the contact, and a tie goes to the ball', () => {
+  const e = makeEnemy('drone', 0, 0, 1, D1);
+  const at = (strength) => resolveEnemy(e, { x: 0, y: 0, dir: 1, boosted: true, strength });
+  assert.equal(at(e.strength - 1), 'hurt', 'weaker loses');
+  assert.equal(at(e.strength), 'kill', 'equal is enough');
+  assert.equal(at(e.strength + 1), 'kill', 'and stronger certainly is');
+});
+
+test('losing a fight costs health and turns the ball round', () => {
+  const g = mkGame();
+  const e = put(g, makeEnemy('drone', 0, 0, 1, D1));
+  e.strength = 99;
+  const dir = g.ball.dir;
+  g._collide(200, 400);
+  assert.equal(g.health, g.healthMax - 1, 'a point of health');
+  assert.equal(g.ball.dir, -dir, 'and thrown back');
+  assert.equal(e.dead, false, 'the enemy is still standing');
+  assert.equal(g.score, 0);
+});
+
+test('winning a fight pays points and lets the ball through', () => {
+  const g = mkGame();
+  const e = put(g, makeEnemy('drone', 0, 0, 1, D1));
+  const dir = g.ball.dir;
+  g._collide(200, 400);
+  assert.equal(e.dead, true);
   assert.equal(g.score, e.value);
+  assert.equal(g.ball.dir, dir, 'a kill is punched straight through');
+  assert.equal(g.health, g.healthMax);
 });
 
-test('the drifter moves and the mote does not', () => {
-  const bounds = { x0: 0, x1: 400, y0: 0, y1: 800 };
-  const mote = makeCollectable('mote', 200, 400, 1, D1);
-  const drift = makeCollectable('drifter', 200, 400, 1, D1);
-  for (let i = 0; i < 30; i++) {
-    updateEntity(mote, 1 / 60, bounds);
-    updateEntity(drift, 1 / 60, bounds);
+test('deeper runs make everything harder to beat, which is the whole curve', () => {
+  const early = makeEnemy('drone', 0, 0, 1, difficulty(1)).strength;
+  const late = makeEnemy('drone', 0, 0, 1, difficulty(9)).strength;
+  assert.ok(late > early, 'a drone that died to a plain ball will not later on');
+  for (let n = 1; n < 12; n++) {
+    assert.ok(difficulty(n + 1).strengthBonus >= difficulty(n).strengthBonus);
   }
-  assert.equal(mote.x, 200);
-  assert.equal(mote.y, 400);
-  assert.ok(Math.hypot(drift.x - 200, drift.y - 400) > 5, 'the moving one should have moved');
-  assert.ok(drift.value > mote.value, 'and pay more for the trouble');
 });
 
-test('a drifter stays inside the reachable field when it bounces', () => {
+// ── weak points ─────────────────────────────────────────────────────────────
+
+test('a weak point faces one end, and only admits a ball running away from it', () => {
+  // Player A is at the bottom (larger y), so its weak point sits at the bottom
+  // of the ring and takes a ball travelling up — which is dir +1.
+  assert.equal(weakAngle('a'), Math.PI / 2);
+  assert.equal(weakAngle('b'), -Math.PI / 2);
+  assert.equal(admitsDir('a'), 1);
+  assert.equal(admitsDir('b'), -1);
+
+  const e = makeEnemy('cyclops', 0, 0, 1, D1);
+  e.weak = [{ side: 'a' }];
+  const below = { x: 0, y: e.shieldR };      // on the bottom of the ring
+  const above = { x: 0, y: -e.shieldR };
+
+  assert.ok(weakPointAt(e, below.x, below.y, 1), 'right hole, right way');
+  assert.equal(weakPointAt(e, below.x, below.y, -1), null, 'right hole, wrong way');
+  assert.equal(weakPointAt(e, above.x, above.y, 1), null, 'wrong hole');
+  assert.equal(weakPointAt(e, above.x, above.y, -1), null, 'still wrong hole');
+});
+
+test('the hole is a hole and the rest is a wall, all the way round', () => {
+  const e = makeEnemy('cyclops', 0, 0, 1, D1);
+  e.weak = [{ side: 'a' }];
+  const R = e.shieldR;
+  for (let i = 0; i < 72; i++) {
+    const ang = (i / 72) * Math.PI * 2 - Math.PI;
+    const x = Math.cos(ang) * R, y = Math.sin(ang) * R;
+    const inArc = Math.abs(Math.atan2(Math.sin(ang - Math.PI / 2), Math.cos(ang - Math.PI / 2))) <= WEAK_HALF;
+    assert.equal(!!weakPointAt(e, x, y, 1), inArc, `angle ${ang.toFixed(2)}`);
+  }
+});
+
+test('a shielded enemy is a wall until you come in the right way, boosting', () => {
+  const e = makeEnemy('cyclops', 0, 0, 1, D1);
+  e.weak = [{ side: 'a' }];
+  const R = e.shieldR;
+  const strong = 99;
+
+  const at = (y, dir, boosted) => resolveEnemy(e, { x: 0, y, dir, boosted, strength: strong });
+  assert.equal(at(R, 1, true), 'kill', 'through the hole, boosting, strong enough');
+  assert.equal(at(R, 1, false), 'block', 'through the hole but not boosting');
+  assert.equal(at(R, -1, true), 'block', 'the hole, from the wrong side');
+  assert.equal(at(-R, 1, true), 'block', 'the plating');
+});
+
+test('a block is free — it turns the ball round and costs nothing', () => {
   const g = mkGame();
-  const b = g.fieldBounds();
-  const e = makeCollectable('drifter', (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 1, D1);
-  for (let i = 0; i < 4000; i++) {
-    updateEntity(e, 1 / 60, b);
-    assert.ok(e.x >= b.x0 - 0.001 && e.x <= b.x1 + 0.001, 'x stayed in reach');
-    assert.ok(e.y >= b.y0 - 0.001 && e.y <= b.y1 + 0.001, 'y stayed in reach');
-  }
+  const e = put(g, makeEnemy('cyclops', 0, 0, 1, D1));
+  e.weak = [{ side: 'b' }];
+  g.ball.dir = 1;                       // heading for the plated side
+  g._collide(200, 400 + e.shieldR);
+  assert.equal(g.ball.dir, -1, 'turned round');
+  assert.equal(g.health, g.healthMax, 'but unharmed');
+  assert.equal(e.dead, false);
+  assert.equal(g.score, 0);
 });
 
-test('the rings are where the points are', () => {
-  const plain = Math.max(...PLAIN.map((k) => COLLECTABLES[k].value));
-  for (const k of SHIELDED) {
-    assert.ok(COLLECTABLES[k].value > plain, `${k} should beat every plain one`);
-  }
-  assert.ok(COLLECTABLES.vault.value > plain * 4, 'and the deepest one by a long way');
+test('a cyclops has one weak point and a janus has one for each player', () => {
+  assert.equal(ENEMIES.drone.weak, 0);
+  assert.equal(ENEMIES.cyclops.weak, 1);
+  assert.equal(ENEMIES.janus.weak, 2);
+
+  const cy = makeEnemy('cyclops', 0, 0, 1, D1);
+  assert.equal(cy.weak.length, 1, 'one player has to be the one to shove');
+
+  const ja = makeEnemy('janus', 0, 0, 1, D1);
+  assert.deepEqual(ja.weak.map((w) => w.side).sort(), ['a', 'b'], 'either player can');
+  assert.ok(ENEMIES.janus.strength > ENEMIES.cyclops.strength, 'and it costs more to beat');
 });
 
-test('a shielded piece cannot sit on the field forever and stall the run', () => {
-  for (const k of SHIELDED) {
-    assert.ok(makeCollectable(k, 0, 0, 1, D1).ttl < Infinity, `${k} expires`);
+test('a cyclops faces one way or the other, never neither', () => {
+  const sides = new Set();
+  for (let i = 0; i < 60; i++) sides.add(makeEnemy('cyclops', 0, 0, 1, D1).weak[0].side);
+  assert.deepEqual([...sides].sort(), ['a', 'b'], 'both come up');
+});
+
+test('the steel is drawn exactly where the rule says there is no hole', () => {
+  for (const type of ['cyclops', 'janus']) {
+    const e = makeEnemy(type, 0, 0, 1, D1);
+    const { gaps, plate } = shieldSpans(e);
+    assert.equal(gaps.length, e.weak.length);
+
+    const covered = plate.reduce((sum, [a0, a1]) => sum + (a1 - a0), 0);
+    const open = gaps.length * WEAK_HALF * 2;
+    assert.ok(Math.abs(covered + open - Math.PI * 2) < 1e-9,
+      `${type}: plate and holes should account for the whole ring`);
   }
-  for (const k of PLAIN) {
-    assert.equal(makeCollectable(k, 0, 0, 1, D1).ttl, Infinity, `${k} waits`);
-  }
-  // And there is room for a second one alongside, so a run never queues up
-  // behind a single set of rings.
-  assert.equal(difficulty(1).maxCollectables, 1, 'nothing to wait for yet');
-  assert.ok(difficulty(3).maxCollectables > 1, 'once rings are in play, two at a time');
 });
 
 // ── obstacles ───────────────────────────────────────────────────────────────
 
-test('every obstacle is lethal on contact, in every state the ball can be in', () => {
-  for (const key of Object.keys(OBSTACLES)) {
-    const def = OBSTACLES[key];
-    assert.equal(def.hp, 0, `${key} wears no shield`);
-    assert.equal(def.value, 0, `${key} pays nothing`);
-    assert.equal(def.gate, undefined, `${key} has no gate to learn`);
-
-    const e = makeObstacle(key, 0, 0, 1, D1);
-    assert.equal(isLethal(e), true, key);
-    assert.equal(e.hpMax, 0, `${key} live`);
-  }
-  for (const key of Object.keys(COLLECTABLES)) {
-    assert.equal(isLethal(makeCollectable(key, 0, 0, 1, D1)), false, `${key} can never hurt you`);
-  }
-});
-
-test('a contact with an obstacle costs a life whatever the ball was doing', () => {
-  for (const key of Object.keys(OBSTACLES)) {
-    for (const w of WORLDS) {
+test('an obstacle costs health whatever the ball is doing', () => {
+  for (const type of Object.keys(OBSTACLES)) {
+    for (const boost of [false, true]) {
       const g = mkGame();
-      const e = makeObstacle(key, 200, 400, 1, D1);
+      const e = makeObstacle(type, 200, 400, 1, D1);
       e.spawnT = 0;
       g.entities.push(e);
-      g.ball.state = w.boosted ? 'boost' : 'normal';
-      assert.equal(g._collide(200, 400), true, `${key}, ${w.name}`);
-      assert.equal(g.lives, CFG.base.lives - 1, `${key}, ${w.name}`);
-      assert.equal(g.score, 0, `${key} pays nothing, ${w.name}`);
+      if (boost) g.ball.state = 'boost';
+      const dir = g.ball.dir;
+      g._collide(200, 400);
+      assert.equal(g.health, g.healthMax - 1, `${type} boosted=${boost}`);
+      assert.equal(g.ball.dir, -dir, `${type} throws the ball back`);
+      assert.equal(g.score, 0, `${type} pays nothing`);
+      assert.equal(e.dead, false, `${type} cannot be destroyed`);
     }
   }
 });
 
-test('the shard is a slab that got loose', () => {
-  const slab = makeObstacle('slab', 200, 400, 1, D1);
-  const shard = makeObstacle('shard', 200, 400, 1, D1);
+// ── health and lives ────────────────────────────────────────────────────────
 
-  assert.equal(shard.shape, slab.shape, 'same drawing, so it reads the same');
-  assert.equal(shard.color, slab.color, 'same red, same answer');
-  assert.ok(Math.max(shard.w, shard.h) < Math.max(slab.w, slab.h), 'but smaller');
-  assert.ok(Math.hypot(shard.vx, shard.vy) > 0, 'and it moves');
-  assert.equal(Math.hypot(slab.vx, slab.vy), 0, 'where a slab sits still');
+test('health goes one at a time, and only the last one costs a life', () => {
+  const g = mkGame();
+  const lives = g.lives;
+  for (let i = 1; i < g.healthMax; i++) {
+    g.phase = 'play';
+    const e = makeObstacle('slab', 200, 400, 1, D1);
+    e.spawnT = 0; e.w = 40; e.h = 40; g.entities.push(e);
+    g._collide(200, 400);
+    assert.equal(g.health, g.healthMax - i);
+    assert.equal(g.lives, lives, 'still the same ball');
+    assert.equal(g.phase, 'play', 'and still running');
+  }
+
+  g.phase = 'play';
+  const last = makeObstacle('slab', 200, 400, 1, D1);
+  last.spawnT = 0; last.w = 40; last.h = 40; g.entities.push(last);
+  g._collide(200, 400);
+  assert.equal(g.lives, lives - 1, 'the last point of health costs a life');
+  assert.equal(g.health, g.healthMax, 'and the new ball comes back full');
+  assert.equal(g.phase, 'launch', 'everything stops for another hold');
 });
 
-test('a shard bounces around inside the reachable field', () => {
+test('the ball comes back on the paddle it was heading for', () => {
   const g = mkGame();
-  const b = g.fieldBounds();
-  const e = makeObstacle('shard', (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 1, D1);
-  e.ttl = Infinity;
-  for (let i = 0; i < 4000; i++) {
-    updateEntity(e, 1 / 60, b);
-    assert.ok(e.x >= b.x0 - 0.001 && e.x <= b.x1 + 0.001, 'x stayed in reach');
-    assert.ok(e.y >= b.y0 - 0.001 && e.y <= b.y1 + 0.001, 'y stayed in reach');
+  g.ball.dir = 1;
+  g._loseLife(null);
+  assert.equal(g.ball.t, 1, 'respawns on the far paddle');
+  assert.equal(g.ball.dir, -1, 'and sets off away from it');
+  assert.equal(g.phase, 'launch');
+
+  g.phase = 'play';
+  g.ball.dir = -1;
+  g._loseLife(null);
+  assert.equal(g.ball.t, 0);
+  assert.equal(g.ball.dir, 1);
+});
+
+test('a death clears whatever was camping the respawn, but not the gold', () => {
+  const g = mkGame();
+  g.ball.dir = 1;
+  const home = g.paddleBPos();
+  const near = makeObstacle('slab', home.x, home.y, 1, D1);
+  const far = makeObstacle('slab', home.x, home.y + 400, 1, D1);
+  const loot = makeGold('mote', home.x, home.y, 1, D1);
+  g.entities.push(near, far, loot);
+  g._loseLife(null);
+  assert.equal(near.dead, true, 'a hazard on the respawn is swept');
+  assert.equal(far.dead, false);
+  assert.equal(loot.dead, false, 'gold is not a threat, so it stays');
+});
+
+test('a run ends when the lives run out', () => {
+  let finished = null;
+  const g = new Game({}, stubInput(), { onFinish: (r) => { finished = r; } });
+  g.resize(400, 800, 1);
+  g.startRun(1, emptyUpgrades());
+  for (let i = 0; i < CFG.base.lives; i++) { g.phase = 'play'; g._loseLife(null); }
+  assert.ok(finished);
+  assert.equal(finished.cleared, false);
+  assert.equal(finished.reason, 'NO LIVES LEFT');
+});
+
+test('playground mode never runs out of health or lives', () => {
+  const g = new Game({}, stubInput(), {});
+  g.resize(400, 800, 1);
+  g.startPlayground('slab');
+  for (let i = 0; i < 10; i++) {
+    g.phase = 'play';
+    const e = makeObstacle('slab', 200, 400, 1, D1);
+    e.spawnT = 0; e.w = 40; e.h = 40; g.entities.push(e);
+    g._collide(200, 400);
   }
+  assert.equal(g.lives, Infinity);
+  assert.equal(g.health, Infinity);
+  assert.equal(g.active, true);
+});
+
+// ── ball state ──────────────────────────────────────────────────────────────
+
+test('a lift shoves whether or not anyone else is holding', () => {
+  const g = mkGame();
+  g.ball.dir = 1;
+  g.input.boostDir = 1;
+  assert.equal(g._ballState(), 'boost');
+  g.input.boostDir = -1;
+  assert.equal(g._ballState(), 'normal', 'a lift never drags an incoming ball');
+  g.input.boostDir = 0;
+  assert.equal(g._ballState(), 'normal');
+});
+
+test('a boosted ball flies, and nothing slows it down', () => {
+  const g = mkGame();
+  assert.equal(g._speedMult('normal'), 1);
+  assert.equal(g._speedMult('boost'), CFG.boost.mult);
+  assert.equal(CFG.boost.slow, undefined);
+  assert.equal(CFG.ghost, undefined);
+});
+
+test('reverses() is the one place a bounce is decided', () => {
+  assert.equal(reverses('block'), true);
+  assert.equal(reverses('hurt'), true);
+  assert.equal(reverses('kill'), false);
+  assert.equal(reverses('crack'), false);
+  assert.equal(reverses('take'), false);
+  assert.equal(reverses('pass'), false);
+});
+
+test('ore only ever answers one question', () => {
+  assert.equal(resolveOre({ boosted: true }), 'crack');
+  assert.equal(resolveOre({ boosted: false }), 'pass');
 });
 
 // ── geometry ────────────────────────────────────────────────────────────────
 
 test('entities are inert while telegraphing', () => {
-  const e = makeCollectable('vault', 100, 100, 1, D1);
-  e.spawnT = 1;
+  const e = makeEnemy('drone', 100, 100, 1, D1);
+  assert.ok(e.spawnT > 0);
   assert.equal(hitTest(e, 100, 100, 8), false);
   e.spawnT = 0;
   assert.equal(hitTest(e, 100, 100, 8), true);
+});
+
+test('a shielded enemy is met at its shield, not its body', () => {
+  const bare = makeEnemy('drone', 200, 400, 1, D1);
+  const shut = makeEnemy('cyclops', 200, 400, 1, D1);
+  bare.spawnT = 0; shut.spawnT = 0;
+  assert.ok(shut.shieldR > shut.r, 'the ring stands off the body');
+  assert.equal(hitTest(shut, 200 + shut.r + 2, 400, 1), true, 'contact happens at the ring');
+  assert.equal(hitTest(bare, 200 + bare.r + 6, 400, 1), false, 'an unshielded one has no ring');
 });
 
 test('the rect-shaped obstacles collide as rectangles', () => {
@@ -334,10 +447,28 @@ test('the rect-shaped obstacles collide as rectangles', () => {
 test('a rotor arm is lethal along its whole length, not just at the tip', () => {
   const e = makeObstacle('rotor', 200, 400, 1, D1);
   e.spawnT = 0;
-  e.angle = 0;                                        // arms lie on the x axis
+  e.angle = 0;
   const mid = 200 + e.armLen * 0.5;
   assert.equal(hitTest(e, mid, 400, 6), true, 'mid-arm should hit');
   assert.equal(hitTest(e, 200, 400 + e.armLen, 6), false, 'perpendicular gap should miss');
+});
+
+test('everything that moves stays inside the reachable field', () => {
+  const g = mkGame();
+  const b = g.fieldBounds();
+  const mid = { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 };
+  const movers = [
+    makeObstacle('shard', mid.x, mid.y, 1, D1),
+    makeLooseMote(mid.x, mid.y, 1, D1),
+  ];
+  for (const e of movers) {
+    e.ttl = Infinity; e.damp = 0;
+    for (let i = 0; i < 3000; i++) {
+      updateEntity(e, 1 / 60, b);
+      assert.ok(e.x >= b.x0 - 0.001 && e.x <= b.x1 + 0.001, `${e.type} x stayed in reach`);
+      assert.ok(e.y >= b.y0 - 0.001 && e.y <= b.y1 + 0.001, `${e.type} y stayed in reach`);
+    }
+  }
 });
 
 test('nothing spawns where the line cannot reach it', () => {
@@ -356,110 +487,17 @@ test('nothing spawns where the line cannot reach it', () => {
   }
 });
 
-// ── boost arithmetic ────────────────────────────────────────────────────────
-
-test('a lift speeds the ball away and never slows it down', () => {
-  const g = mkGame();
-  const paceOf = () => g._speedMult(g._ballState());
-  g.ball.dir = 1;
-  g.input.handsOff = false;
-
-  g.input.boostDir = 0;
-  assert.equal(paceOf(), 1, 'no lift, normal pace');
-
-  g.input.boostDir = 1;                       // near player lifted, ball heading away
-  assert.equal(paceOf(), CFG.boost.mult);
-
-  g.input.boostDir = -1;                      // far player lifted, ball heading at them
-  assert.equal(paceOf(), 1, 'a lift must not drag an incoming ball');
-
-  g.ball.dir = -1;                            // ball turns round
-  assert.equal(paceOf(), CFG.boost.mult);
-
-  assert.equal(CFG.boost.slow, undefined, 'a lift never slows anything');
-});
-
-test('two simultaneous lifts cancel', () => {
-  const g = mkGame();
-  g.input.a.boostT = 0.3;
-  g.input.b.boostT = 0.3;
-  g.input.boostDir = (g.input.a.boostT > 0 ? 1 : 0) + (g.input.b.boostT > 0 ? -1 : 0);
-  assert.equal(g.input.boostDir, 0, 'the two shoves cancel');
-  assert.equal(g._ballState(), 'normal', 'so the ball just keeps its own pace');
-});
-
-test('resolveCollectable is the only contact rule left', () => {
-  const plain = makeCollectable('mote', 0, 0, 1, D1);
-  for (const w of WORLDS) assert.equal(resolveCollectable(plain, w), 'collect', w.name);
-
-  const rings = makeCollectable('shell', 0, 0, 1, D1);
-  assert.equal(resolveCollectable(rings, { boosted: false }), 'pass');
-  assert.equal(resolveCollectable(rings, { boosted: true }), 'damage');
-  rings.hp = 0;
-  assert.equal(resolveCollectable(rings, { boosted: false }), 'collect',
-    'once the rings are gone it is just a mote again');
-});
-
 // ── scoring ─────────────────────────────────────────────────────────────────
 
-test('the multiplier climbs on every bank and resets on a death', () => {
+test('the multiplier climbs on every kill and resets on damage', () => {
   const g = mkGame();
-  const bank = () => g._collect(makeCollectable('mote', 200, 400, 1, D1));
-  bank(); assert.equal(g.mult, 2);
-  bank(); assert.equal(g.mult, 3);
-  const v = COLLECTABLES.mote.value;
-  assert.equal(g.score, v + v * 2, 'the multiplier applies at the moment of banking');
-  g._loseLife(null);
+  const kill = () => g._kill(makeEnemy('drone', 200, 400, 1, D1));
+  kill(); assert.equal(g.mult, 2);
+  kill(); assert.equal(g.mult, 3);
+  const v = makeEnemy('drone', 0, 0, 1, D1).value;
+  assert.equal(g.score, v + v * 2, 'the multiplier applies at the moment of the kill');
+  g._hurt(null);
   assert.equal(g.mult, 1);
-});
-
-// ── life loss ───────────────────────────────────────────────────────────────
-
-test('the ball comes back on the paddle it was heading for', () => {
-  const g = mkGame();
-  g.ball.dir = 1;                       // travelling toward the far paddle
-  g._loseLife(null);
-  assert.equal(g.ball.t, 1, 'respawns on the far paddle');
-  assert.equal(g.ball.dir, -1, 'and sets off away from it');
-  assert.equal(g.phase, 'launch');
-
-  g.phase = 'play';
-  g.ball.dir = -1;
-  g._loseLife(null);
-  assert.equal(g.ball.t, 0);
-  assert.equal(g.ball.dir, 1);
-});
-
-test('a death clears whatever was camping the respawn', () => {
-  const g = mkGame();
-  g.ball.dir = 1;
-  const home = g.paddleBPos();
-  const near = makeObstacle('slab', home.x, home.y, 1, D1);
-  const far = makeObstacle('slab', home.x, home.y + 400, 1, D1);
-  g.entities.push(near, far);
-  g._loseLife(null);
-  assert.equal(near.dead, true);
-  assert.equal(far.dead, false);
-});
-
-test('a run ends when the lives run out', () => {
-  let finished = null;
-  const g = new Game({}, stubInput(), { onFinish: (r) => { finished = r; } });
-  g.resize(400, 800, 1);
-  g.startRun(1, emptyUpgrades());
-  for (let i = 0; i < CFG.base.lives; i++) { g.phase = 'play'; g._loseLife(null); }
-  assert.ok(finished);
-  assert.equal(finished.cleared, false);
-  assert.equal(finished.reason, 'NO LIVES LEFT');
-});
-
-test('playground mode never runs out of lives', () => {
-  const g = new Game({}, stubInput(), {});
-  g.resize(400, 800, 1);
-  g.startPlayground('slab');
-  for (let i = 0; i < 10; i++) { g.phase = 'play'; g._loseLife(null); }
-  assert.equal(g.lives, Infinity);
-  assert.equal(g.active, true);
 });
 
 // ── run economy ─────────────────────────────────────────────────────────────
@@ -477,52 +515,75 @@ test('clearing a run banks a time bonus', () => {
   assert.equal(g.score, g.target + finished.bonus);
 });
 
-test('each run teaches exactly one new piece', () => {
-  assert.deepEqual(difficulty(1).collectPool, ['mote']);
-  assert.deepEqual(difficulty(1).obstaclePool, ['slab']);
+test('run 1 carries all three families, because it has to', () => {
+  const d = difficulty(1);
+  assert.ok(d.goldPool.length, 'something to dig, or nothing pays for upgrades');
+  assert.ok(d.enemyPool.length, 'something to kill, or the target is unreachable');
+  assert.ok(d.obstaclePool.length, 'something to dodge, or there is no game');
+});
 
-  const seen = new Set(['mote', 'slab']);
-  for (let n = 2; n <= 7; n++) {
-    const d = difficulty(n);
-    const fresh = [...d.collectPool, ...d.obstaclePool].filter((k) => !seen.has(k));
+test('after run 1 it is exactly one new piece per run', () => {
+  const spread = (d) => [...d.goldPool, ...d.enemyPool, ...d.obstaclePool];
+  const seen = new Set(spread(difficulty(1)));
+  for (let n = 2; n <= 6; n++) {
+    const fresh = spread(difficulty(n)).filter((k) => !seen.has(k));
     assert.equal(fresh.length, 1, `run ${n} should bring exactly one new piece`);
     seen.add(fresh[0]);
   }
-  const last = difficulty(7);
-  assert.equal(last.collectPool.length, Object.keys(COLLECTABLES).length, 'every collectable by run 7');
-  assert.equal(last.obstaclePool.length, Object.keys(OBSTACLES).length, 'every obstacle by run 7');
-  assert.deepEqual(difficulty(12).collectPool, last.collectPool, 'and nothing new after that');
+  assert.equal(seen.size, Object.keys(ALL).length, 'everything is in play by run 6');
+  assert.deepEqual(spread(difficulty(12)), spread(difficulty(6)), 'and nothing new after that');
 });
 
 test('targets and threat both climb every run', () => {
   for (let n = 1; n < 12; n++) {
     assert.ok(CFG.run.target(n + 1) > CFG.run.target(n), `target ${n}`);
     assert.ok(difficulty(n + 1).maxObstacles >= difficulty(n).maxObstacles);
-    assert.ok(difficulty(n + 1).obstacleGap <= difficulty(n).obstacleGap);
+    assert.ok(difficulty(n + 1).maxEnemies >= difficulty(n).maxEnemies);
+    assert.ok(difficulty(n + 1).enemyGap <= difficulty(n).enemyGap);
     assert.ok(difficulty(n + 1).valueScale > difficulty(n).valueScale);
   }
 });
 
-test('paddle width is not for sale, because it is not a lever', () => {
-  assert.ok(!UPGRADES.some((u) => u.id === 'paddle'), 'no wide-paddle upgrade');
-  assert.equal(derived(emptyUpgrades()).paddleScale, undefined);
-
-  // And the width really is constant, whatever anyone has bought.
-  const g = mkGame();
-  const before = g.paddleW;
-  g.startRun(1, { ...emptyUpgrades(), lives: 3, power: 5, time: 4, boost: 6 });
-  assert.equal(g.paddleW, before);
-});
-
-test('upgrades get dearer and actually change the run', () => {
+test('the shop sells exactly the four levers, and each one moves', () => {
+  assert.deepEqual(UPGRADES.map((u) => u.id).sort(), ['health', 'lives', 'strength', 'time']);
   for (const u of UPGRADES) {
     assert.ok(upgradeCost(u, 1) > upgradeCost(u, 0));
     assert.ok(upgradeCost(u, 3) > upgradeCost(u, 2));
   }
   const none = derived(emptyUpgrades());
-  const kitted = derived({ ...emptyUpgrades(), lives: 2, power: 3, time: 2, boost: 2 });
+  const kitted = derived({ ...emptyUpgrades(), lives: 2, health: 3, strength: 2, time: 2 });
   assert.equal(kitted.lives, none.lives + 2);
-  assert.equal(kitted.power, none.power + 3);
+  assert.equal(kitted.health, none.health + 3);
+  assert.equal(kitted.boostStrength, none.boostStrength + 2);
   assert.equal(kitted.time, none.time + 16);
-  assert.ok(kitted.boostScale > none.boostScale);
+  assert.equal(kitted.strength, none.strength, 'the resting strength is not for sale');
+});
+
+test('paddle width is not for sale, because it is not a lever', () => {
+  assert.ok(!UPGRADES.some((u) => u.id === 'paddle'));
+  const g = mkGame();
+  const before = g.paddleW;
+  g.startRun(1, { ...emptyUpgrades(), lives: 3, health: 5, strength: 4, time: 4 });
+  assert.equal(g.paddleW, before);
+});
+
+test('buying boost strength really does beat a stronger enemy', () => {
+  const weak = mkGame();
+  weak.ball.state = 'boost';
+  const e1 = put(weak, makeEnemy('janus', 0, 0, 1, D1), { boost: true });
+  e1.weak = [{ side: 'a' }];
+  weak.ball.dir = 1;
+  weak._collide(200, 400 + e1.shieldR);
+  assert.equal(e1.dead, false, 'a base ball cannot beat a janus');
+
+  const strong = new Game({}, stubInput(), {});
+  strong.resize(400, 800, 1);
+  strong.startRun(1, { ...emptyUpgrades(), strength: 2 });
+  strong.phase = 'play';
+  strong.ball.state = 'boost';
+  const e2 = put(strong, makeEnemy('janus', 0, 0, 1, D1), { boost: true });
+  e2.weak = [{ side: 'a' }];
+  strong.ball.dir = 1;
+  strong._collide(200, 400 + e2.shieldR);
+  assert.equal(e2.dead, true, 'two levels of boost strength does');
 });

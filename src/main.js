@@ -116,7 +116,10 @@ class App {
 
     if (result.cleared) {
       this.runsCleared += 1;
-      this.wallet += result.score;
+      // Gold, not points. Points are the target you had to hit to get here;
+      // gold is the separate pile you dug up along the way, and it is the only
+      // thing the shop takes.
+      this.wallet += result.gold;
       this.ui.showShop(this, result);
     } else {
       this.ui.showResult(result, this.meta, { runsCleared: this.runsCleared, total: this.total });

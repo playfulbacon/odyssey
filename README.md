@@ -24,21 +24,31 @@ both lift at once the two shoves cancel out. While your finger is off the glass
 your paddle is frozen where you left it — and nothing else about who is holding
 matters anywhere in the game. When it is your turn to shove, your lift shoves.
 
-## Reading the field
+## Two resources
 
-**Cool is points, red is a life.** Shape says the same thing a second time —
-collectables are an **O**, obstacles an **X** — so you never have to pick a
-single signal out at speed.
+**Gold** is the wallet. It comes from gold motes, it buys upgrades between runs,
+and it is worth no points at all.
+
+**Points** come from killing enemies and nothing else, and points are what the
+run target is measured in.
+
+They never feed each other. You cannot spend your way past a target, and you
+cannot score your way to an upgrade — a run is won by fighting and paid for by
+digging.
+
+## Reading the field
 
 | | |
 |---|---|
-| **mint** | a collectable that sits still. |
-| **blue** | a collectable that moves. |
-| **red** | an obstacle. All of them, always — there is one answer and it is "don't". |
-| **orange** | a shield, the boosted ball that strips it, and the paddle whose shove is up next. |
+| **gold** | gold. Motes and ore, and never dangerous. |
+| **pink** | an enemy. Beatable, if your number is big enough. |
+| **red** | an obstacle. Not beatable at any number. |
+| **orange** | boost — the shoving ball, a weak point, and the paddle whose shove is up next. |
+| **steel** | shield plating. Inert: it cannot hurt you and you cannot hurt it. |
 
-Orange is not a family, it is a *state*, and it means the same thing wherever it
-turns up: this is what boost is for. Nothing else in the game opens anything.
+Shape says it a second time: gold is an **O**, obstacles are an **X**, and an
+enemy wears its strength as a **numeral** — the one glyph you actually have to
+read, because the whole enemy interaction is comparing it against the ball's.
 
 ## The hot end
 
@@ -49,104 +59,107 @@ ball reaches the other paddle.
 
 That is the same orange as everywhere else, doing the same job: **the hot paddle
 is the one whose lift boosts right now.** The ball is running away from that
-player, so theirs is the shove that lands — and the orange trailing off down the
-rail points the way it would go. Whoever is lit is on.
+player, so theirs is the shove that lands. **Spend it and the paddle goes dark**
+— the colour moves onto the flare and the ball, and comes back when the shove
+runs out.
 
-**Spend it and the paddle goes dark.** The moment you lift, the colour leaves
-the paddle and moves onto the flare and the ball; it comes back when the shove
-runs out and another one is available. So orange on a paddle always means the
-same thing: your shove is here, and you have not used it yet.
+## Strength
 
-The rail still says nothing about who is holding. It has no halves and no
-opinion about your fingers; the only touch it ever reports is during the launch
-ritual, where each paddle shows its own player's hold.
+**The ball has a strength and so does every enemy, and both numbers are written
+on them.** A contact between the two is settled by one comparison:
 
-## The ball is the readout
+| | |
+|---|---|
+| ball **equal or greater** | the enemy dies and pays points |
+| ball **weaker** | the ball takes the damage and is thrown back |
 
-**Colour alone says what the ball is doing** — no ring, no dots, no outline,
-just the fill. There are two states, and one of them is "nothing":
+A shove adds to the ball's strength for as long as it lasts, which is why the
+number on the ball goes up the moment it turns orange. `BOOST STRENGTH` raises
+it further, and every run adds strength to everything on the field — so the
+upgrade is not a luxury, it is how you keep up.
 
-| | | |
-|---|---|---|
-| **orange** | boosting | flying, trailing orange, and strips a shield |
-| **ink** | not boosting | strips nothing |
+## Shields and weak points
 
-Whether the ball is boosting depends on exactly two things: is a shove running,
-and is it pushing the way the ball is already going. Nothing else is consulted —
-not whose fingers are down, not the other player's, not anything.
+Some enemies wear a steel ring with **one or two orange weak points** cut into
+it. The plating is inert — bounce off it all day and nothing happens to either
+of you. The weak point is the only way in and it takes a **boosted** ball.
 
-`SHIELD.color` and `ballColorFor('boost')` are the same value, and
-`resolveCollectable()` asks `shieldBreaks()` the one question there is, so the
-picture and the rule cannot come apart.
+**A weak point faces one end of the phone, and the ball can only enter through
+it while running away from that end.** That is the co-op knot: on a `CYCLOPS`,
+one shield with one weak point, only one of you can be the one to shove, and it
+is whoever it is facing. The other player steers and keeps still. A `JANUS` has
+a weak point facing each of you, so either can take the shot — and it is
+stronger to make up for it.
+
+**The ball reverses when it hits a shield**, plating and weak point alike.
+Arriving at the right hole from the wrong side is just a wall.
 
 ## Pieces
 
-**Collectables** are where all of the points are, and none of them can hurt you.
-Two are free; the other three wear orange rings and are the only reason to
-boost. Each boosted pass strips *ball power* rings, and the pass that takes the
-last one banks the piece in the same touch. A plain ball passes straight through
-a ring and simply does not count.
+**Gold** — the wallet, and never a threat.
 
-| | rings | pays | behaviour |
-|---|---|---|---|
-| **MOTE** | — | 60 | Sits still and waits. |
-| **DRIFTER** | — | 140 | The same mote, wandering. Bounces off the walls and never stops; a stub shows where it came from. |
-| **WARD** | 1 | 260 | One boosted pass takes the ring and banks it together. |
-| **SHELL** | 2 | 520 | The same piece, one ring deeper. |
-| **VAULT** | 3 | 900 | The biggest payout on the field, and the longest to stand still over. |
-
-**Obstacles** are pure hazard. They wear nothing, pay nothing, and cost a life
-on *any* contact, boosted or not.
-
-| | pays | behaviour |
+| | | |
 |---|---|---|
-| **SLAB** | — | A long bar, exactly where it landed. |
-| **SHARD** | — | A slab the size of a chip, loose on the field and drifting. |
-| **ROTOR** | — | A hub with two sweeping arms; the arms are as lethal as the hub. |
+| **GOLD MOTE** | 15 gold | Loose gold. Touch it and it is yours. |
+| **GOLD ORE** | 3 charges | A seam. Each boosted shove cracks a charge out as a scatter of loose motes; a plain ball does nothing. Loose motes fade if nobody comes for them. |
+
+**Enemies** — the only things that pay points, and the only things that can be
+beaten.
+
+| | strength | pays | opening |
+|---|---|---|---|
+| **DRONE** | 1 | 200 | none. Any ball strong enough, from any side. |
+| **CYCLOPS** | 2 | 600 | one weak point. One player's job. |
+| **JANUS** | 3 | 1000 | one weak point facing each of you. |
+
+**Obstacles** — red, worth nothing, no strength to beat. Touching one costs
+health and throws the ball back, every time.
+
+| | |
+|---|---|
+| **SLAB** | A long bar, exactly where it landed. |
+| **SHARD** | A slab the size of a chip, loose on the field and drifting. |
+| **ROTOR** | A hub with two sweeping arms, as lethal as the hub. |
 
 Everything fades in behind a dashed telegraph ring and is inert until it lands.
 
-Because a ring needs a boost, the alternating lift is the basic rhythm of
-scoring: you each shove as the ball runs away from you, so the ball is orange in
-both directions. The risk is never in touching an obstacle — it is that holding
-a line over a three-ring vault takes several passes, and something red is
-always on its way.
+## Health and lives
 
-**Launching.** At the start of a run, and after every lost life, both players
-hold their half until the bar fills. A lost ball comes back on the paddle of the
-player it was heading toward.
+Two separate things. **Health** is the ball's, and comes off one point at a time
+whenever it hits an obstacle or loses a fight. **Lives** are how many balls you
+have left. When health runs out you lose a life, everything stops, and you both
+hold again to launch a fresh ball at full health.
 
 ## Runs
 
-Each run is a clock and a score to beat. Clear it and you spend your points on
-upgrades — lives, ball power, run time, boost duration — before the next one,
-which brings a bigger target and a nastier field. Miss the target
-or burn every life and the game is over. Score carries across runs, so the
-question is how deep you can get.
+Each run is a clock and a number of **points** to reach. Clear it and spend your
+**gold** — boost strength, ball health, extra lives, extra time — before the
+next one. Miss the target or burn every life and the game is over.
 
-Run 1 is `MOTE`s and a `SLAB`: steer the line, dodge the red thing. After that
-exactly one new piece arrives per run, alternating sides — something new to
-catch, then something new to dodge — so each run teaches one idea and everything
-is in play by run 7.
+Run 1 has to carry all three families at once, because points come only from
+kills and gold only from motes: a run with nothing to fight has an unreachable
+target, and a run with nothing to dig pays for nothing. After that it is one new
+piece per run, alternating between something to take and something to get past.
 
 | run | new |
 |---|---|
-| 2 | `DRIFTER` |
-| 3 | `WARD` — the first ring, and the first reason to boost |
-| 4 | `SHARD` |
-| 5 | `SHELL` |
-| 6 | `ROTOR` |
-| 7 | `VAULT` |
+| 2 | `GOLD ORE` — the first reason to boost |
+| 3 | `SHARD` |
+| 4 | `CYCLOPS` — the first weak point |
+| 5 | `ROTOR` |
+| 6 | `JANUS` |
 
-A ring count never grows with the run — a `WARD` is one ring at run 3 and one
-ring at run 30. What escalates is the pieces in play, how many obstacles are on
-the field at once, and how fast everything moves.
+Everything on the field also gains strength as the runs go by, which is the one
+thing that never stops escalating.
 
 ## Playground
 
-A no-clock, no-target, endless-lives sandbox with one page per collectable and
-per obstacle, so a mechanic can be learned (or re-tuned) in isolation. Obstacle
-pages also spawn motes, so the practice loop is pure dodging.
+A no-clock, no-target, endless-lives sandbox with one page per piece, so a
+mechanic can be learned in isolation. Enemy and obstacle pages also spawn motes,
+so there is something harmless to steer around them for. The sandbox hands you
+enough boost strength to beat the strongest enemy in the game — at base stats a
+`JANUS` is deliberately out of reach, and a page you cannot beat teaches
+nothing.
 
 ## Running it
 
@@ -176,8 +189,8 @@ touch *and* shoves the ball — and on a keyboard those are split across two key
 
 **Steering keeps your side down, and stopping is not a shove** — letting go of a
 direction key never boosts the ball. **The shove is a tap of the boost key**,
-which also holds your side down without moving it. So you can line a vault up,
-stop, and shove only when you mean to.
+which also holds your side down without moving it. So you can line a cyclops up,
+stop, and shove from the correct end only when you mean to.
 
 The mouse works as a single player and does both jobs at once, like a finger.
 
@@ -206,13 +219,17 @@ test/           rules tests (node --test)
 
 ### Tuning
 
-`src/config.js` is the whole dial board — ball pace, boost strength and
-duration, launch hold time, run targets, upgrade prices, and the per-run
-difficulty curve. `src/entities.js` holds the palette and each
-piece's own numbers (rings, payout, speed) alongside the blurb the playground
-shows. An obstacle's colour is not written down per piece: they are all assigned
-`PALETTE.hazard` in a loop, so a new obstacle cannot be given a hue that
-disagrees with how it behaves.
+`src/config.js` is the whole dial board — ball pace, boost duration, base
+strength and health, launch hold time, run targets, upgrade prices, and the
+per-run difficulty curve. `src/entities.js` holds the palette, the weak-point
+geometry and each piece's own numbers alongside the blurb the playground shows.
+
+Two things are derived rather than written down, so the picture cannot disagree
+with the rules: an enemy's shield plating comes out of `shieldSpans()`, the same
+table `weakPointAt()` reads, and every piece's colour comes from its family.
+
+**Because points come only from kills, `maxEnemies` is the score curve.** If a
+run target starts feeling unreachable, that is the dial, not the target.
 
 While a run is open, `window.__g` is the live game and `window.__odyssey` the
 meta-game, so values can be poked from the console mid-play.
@@ -227,6 +244,13 @@ meta-game, so values can be poked from the console mid-play.
   with a thumb at each end.
   During the launch ritual each paddle also reports its own player's hold, so
   neither of you has to read a prompt meant for the other.
-- Balance is a first pass. Run 1 is deliberately gentle; the later curve has had
-  no real playtesting.
+- **Balance is a first pass.** Headless play clears runs 1-3 comfortably and
+  stalls around run 4, when the CYCLOPS arrives and everything gains a point of
+  strength — but that was a bot that buys upgrades badly, not a verdict. The
+  levers, in the order worth reaching for: `maxEnemies` (which *is* the score
+  curve, since points come only from kills), `CFG.run.target`, and
+  `strengthBonus`.
+- A CYCLOPS asks one specific player to make the shove, which is the best idea
+  in the build and also the least tested with two real humans. The weak-point
+  arc (`WEAK_HALF`) is the dial if it turns out to be too fussy to hit.
 - No haptics, and audio is a handful of synthesised blips.

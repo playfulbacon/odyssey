@@ -7,8 +7,9 @@
 
 import { CFG, difficulty, derived } from './config.js';
 import {
-  PALETTE, SHIELD, COLLECTABLES, OBSTACLES, makeCollectable, makeObstacle,
-  updateEntity, hitTest, resolveCollectable, stateColorOf, ballColorFor,
+  PALETTE, GOLD, ENEMIES, OBSTACLES, defOf,
+  makeGold, makeLooseMote, makeEnemy, makeObstacle,
+  updateEntity, hitTest, resolveEnemy, resolveOre, reverses, ballColorFor,
 } from './entities.js';
 import { sfx } from './audio.js';
 
@@ -47,31 +48,48 @@ export class Game {
     this.mode = 'run';
     this.run = run;
     this.diff = difficulty(run);
-    this.power = d.power;
+    this.strength = d.strength;
+    this.boostStrength = d.boostStrength;
+    this.healthMax = d.health;
     this.livesMax = d.lives;
     this.lives = d.lives;
     this.timeLeft = d.time;
     this.timeMax = d.time;
     this.target = CFG.run.target(run);
-    this.input.boostDur = CFG.boost.dur * d.boostScale;
+    this.input.boostDur = CFG.boost.dur;
     this._begin();
   }
 
+  // One page per piece: only that piece spawns, so a mechanic can be met on its
+  // own. Enemy and obstacle pages get motes alongside, purely so there is
+  // something harmless on the field to steer around them for.
   startPlayground(type) {
-    const def = COLLECTABLES[type] || OBSTACLES[type];
+    const def = defOf(type);
     this.mode = 'playground';
     this.run = 1;
     this.pgType = type;
-    this.pgIsObstacle = def.cls === 'obs';
-    this.diff = difficulty(1);
-    this.diff.maxObstacles = this.pgIsObstacle ? 3 : 0;
-    this.diff.obstacleGap = 2.4;
-    this.diff.obstacleTtl = 22;
-    this.diff.obstaclePool = this.pgIsObstacle ? [type] : [];
-    // Obstacle pages get MOTEs as filler: ringless, so the practice loop is
-    // pure dodging with nothing else to think about.
-    this.diff.collectPool = this.pgIsObstacle ? ['mote'] : [type];
-    this.power = CFG.base.power;
+    const d = difficulty(1);
+    this.diff = d;
+
+    d.goldPool = def.cls === 'gold' ? [type] : ['mote'];
+    d.enemyPool = def.cls === 'enemy' ? [type] : [];
+    d.obstaclePool = def.cls === 'obs' ? [type] : [];
+    d.maxGold = 1;
+    d.maxEnemies = def.cls === 'enemy' ? 2 : 0;
+    d.maxObstacles = def.cls === 'obs' ? 3 : 0;
+    d.enemyGap = 2.2;
+    d.obstacleGap = 2.4;
+    d.enemyTtl = 26;
+    d.obstacleTtl = 22;
+    d.oreTtl = Infinity;
+
+    // A sandbox has to be able to beat the thing it is teaching. At base stats
+    // a JANUS is deliberately out of reach — that is what BOOST STRENGTH is
+    // for — so the playground hands you enough to match the strongest piece in
+    // the game and lets you get on with learning the shape of it.
+    this.strength = CFG.base.strength;
+    this.boostStrength = Math.max(...Object.values(ENEMIES).map((e) => e.strength));
+    this.healthMax = Infinity;
     this.livesMax = Infinity;
     this.lives = Infinity;
     this.timeLeft = Infinity;
@@ -81,13 +99,16 @@ export class Game {
   }
 
   _begin() {
-    this.score = 0;
+    this.score = 0;      // points, from kills only
+    this.gold = 0;       // the wallet, from motes only
     this.mult = 1;
+    this.health = this.healthMax;
     this.entities = [];
     this.particles = [];
     this.floaters = [];
     this.obstacleTimer = this.mode === 'playground' ? 0.6 : 2.2;
-    this.collectTimer = 0.35;
+    this.enemyTimer = this.mode === 'playground' ? 0.5 : 1.4;
+    this.goldTimer = 0.35;
     this.shake = 0;
     this.flash = 0;
     this.banner = null;
@@ -282,53 +303,141 @@ export class Game {
 
   // ── collision ─────────────────────────────────────────────────────────────
 
-  // Returns true if the step should abort (a life was lost).
+  // What the ball brings to a contact. Its strength is its own, plus whatever a
+  // shove is adding at this instant — which is why the number on the ball goes
+  // up the moment it turns orange.
+  _ballWorld(x, y) {
+    const boosted = this.ball.state === 'boost';
+    return {
+      x, y,
+      dir: this.ball.dir,
+      boosted,
+      strength: this.strength + (boosted ? this.boostStrength : 0),
+    };
+  }
+
+  // Returns true if the ball has been re-armed and the step must stop.
   _collide(x, y) {
     const br = this.ballR;
-    // The ball's state *is* the key it carries, so what it can strip is exactly
-    // what it is drawn as: orange opens a shield, nothing else does.
-    const world = { boosted: this.ball.state === 'boost' };
+    const world = this._ballWorld(x, y);
 
     for (const e of this.entities) {
       if (e.dead || e.cool > 0 || e.spawnT > 0) continue;
       if (!hitTest(e, x, y, br)) continue;
 
-      // Obstacles have no gate and no shield left to check. Touching one is the
-      // only thing in the game that can cost you.
-      if (e.cls === 'obs') { this._loseLife(e); return true; }
+      const r = this._resolve(e, world);
 
-      const r = resolveCollectable(e, world);
-      if (r === 'collect') this._collect(e);
-      else if (r === 'damage') { this._strip(e); e.cool = CFG.hitCool; }
+      // Anything that turns the ball round does it here, in one place, so a
+      // block and a beating bounce identically.
+      if (reverses(r)) {
+        this.ball.dir = -this.ball.dir;
+        e.cool = CFG.hitCool;
+        if (r === 'hurt' && this._hurt(e)) return true;
+        return false;      // one bounce per contact; stop looking
+      }
+      if (r !== 'pass') e.cool = CFG.hitCool;
     }
     return false;
   }
 
-  // `cracked` means this one came out from behind a shield, so it lands harder.
-  _collect(e, cracked = false) {
+  _resolve(e, world) {
+    if (e.cls === 'obs') return 'hurt';           // no strength, no way through
+
+    if (e.cls === 'enemy') {
+      const r = resolveEnemy(e, world);
+      if (r === 'kill') this._kill(e);
+      else if (r === 'block') this._clang(e, world);
+      return r;
+    }
+
+    if (e.type === 'ore') {
+      const r = resolveOre(world);
+      if (r === 'crack') this._crack(e);
+      return r;
+    }
+
+    this._bank(e);
+    return 'take';
+  }
+
+  // ── gold ──────────────────────────────────────────────────────────────────
+
+  _bank(e) {
+    e.dead = true;
+    this.gold += e.gold;
+    this._float(e.x, e.y, `+${e.gold}`, e.color);
+    this._burst(e.x, e.y, e.color, 12, 140);
+    sfx.collect(1);
+    this.shake = Math.max(this.shake, 1.6 * this.S);
+  }
+
+  // A shove knocks one charge out of a seam as loose motes. The seam itself is
+  // never dangerous and never blocks — the ball goes straight through it.
+  _crack(e) {
+    e.charges -= 1;
+    e.flare = 1;
+    const n = e.yield;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + rand(0, 1);
+      const d = e.r * 0.5;
+      this.entities.push(makeLooseMote(
+        e.x + Math.cos(a) * d, e.y + Math.sin(a) * d, this.S, this.diff));
+    }
+    this._burst(e.x, e.y, PALETTE.gold, 14, 170);
+    sfx.crack();
+    this.shake = Math.max(this.shake, 3 * this.S);
+    if (e.charges <= 0) {
+      e.dead = true;
+      this._burst(e.x, e.y, PALETTE.gold, 20, 210);
+    }
+  }
+
+  // ── enemies ───────────────────────────────────────────────────────────────
+
+  _kill(e) {
     e.dead = true;
     const gain = Math.round(e.value * this.mult);
     this.score += gain;
     this._float(e.x, e.y, `+${gain}`, e.color);
-    this._burst(e.x, e.y, e.color, cracked ? 26 : 16, cracked ? 220 : 150);
-    if (cracked) { sfx.destroy(); this.flash = 0.35; this.flashColor = e.color; }
-    else sfx.collect(this.mult);
+    this._burst(e.x, e.y, e.color, 26, 220);
+    sfx.destroy();
     this.mult = Math.min(CFG.multCap, this.mult + 1);
-    this.shake = Math.max(this.shake, (cracked ? 5 : 2) * this.S);
+    this.shake = Math.max(this.shake, 5 * this.S);
+    this.flash = 0.3;
+    this.flashColor = e.color;
   }
 
-  _strip(e) {
-    e.hp -= this.power;
-    e.flare = 1;
-    // Chips come off orange — the shield's colour, and the colour of the ball
-    // that just landed. They are the same substance.
-    this._burst(e.x, e.y, SHIELD.color, 8, 120);
-    if (e.hp > 0) { sfx.crack(); this.shake = Math.max(this.shake, 2.5 * this.S); return; }
-
-    // The pass that takes the last ring banks the piece in the same touch.
-    this._collect(e, true);
+  // Turned away by the plating, or by arriving at the weak point the wrong way.
+  // Nobody is any worse off; it just costs you the pass.
+  _clang(e, world) {
+    e.flare = 0.6;
+    this._burst(e.x, e.y, PALETTE.plate, 6, 110);
+    sfx.paddle();
+    this.shake = Math.max(this.shake, 2 * this.S);
   }
 
+  // ── damage ────────────────────────────────────────────────────────────────
+
+  // Returns true if that was the last of the ball's health.
+  _hurt(e) {
+    this.mult = 1;
+    this._burst(this.ball.x, this.ball.y, PALETTE.hazard, 16, 200);
+    this.shake = Math.max(this.shake, 7 * this.S);
+    this.flash = 0.45;
+    this.flashColor = PALETTE.hazard;
+    sfx.crack();
+
+    if (this.health === Infinity) return false;
+    this.health -= 1;
+    this._float(this.ball.x, this.ball.y, '-1', PALETTE.hazard);
+    if (this.health > 0) return false;
+
+    this._loseLife(e);
+    return true;
+  }
+
+  // Health is gone, so the ball itself is gone. That costs a life and puts
+  // everything back on a paddle for another hold.
   _loseLife(e) {
     sfx.die();
     this._burst(this.ball.x, this.ball.y, PALETTE.hazard, 30, 260);
@@ -336,7 +445,7 @@ export class Game {
     this.flash = 0.7;
     this.flashColor = PALETTE.hazard;
     this.mult = 1;
-    if (e) { e.dead = true; this._burst(e.x, e.y, stateColorOf(e), 10, 140); }
+    this.health = this.healthMax;
 
     if (this.mode === 'run') {
       this.lives -= 1;
@@ -351,9 +460,9 @@ export class Game {
     // Anything camped on the respawn gets swept away so it isn't a free death.
     const rr = CFG.safeClear * this.S;
     for (const o of this.entities) {
-      if (o.cls === 'obs' && Math.hypot(o.x - home.x, o.y - home.y) < rr) {
+      if (o.cls !== 'gold' && Math.hypot(o.x - home.x, o.y - home.y) < rr) {
         o.dead = true;
-        this._burst(o.x, o.y, stateColorOf(o), 6, 90);
+        this._burst(o.x, o.y, o.color, 6, 90);
       }
     }
 
@@ -365,47 +474,41 @@ export class Game {
 
   _director(dt) {
     const live = this.entities.filter((e) => !e.dead);
+    const d = this.diff;
 
-    const cols = live.filter((e) => e.cls === 'col');
-    if (cols.length < (this.diff.maxCollectables || 1)) {
-      this.collectTimer -= dt;
-      if (this.collectTimer <= 0) {
-        this._spawnCollectable();
-        this.collectTimer = 0.35;
-      }
-    } else {
-      this.collectTimer = 0.35;
-    }
+    // Loose motes shaken out of a seam are a windfall, not stock — they must
+    // not hold the next spawn back, or cracking an ore starves the field.
+    const gold = live.filter((e) => e.cls === 'gold' && !e.damp);
+    this._feed(dt, 'goldTimer', gold.length < (d.maxGold || 1), d.goldGap || 0.35,
+      () => this._spawnFrom(d.goldPool, makeGold, GOLD, 60));
 
-    if (this.diff.obstaclePool.length && this.diff.maxObstacles > 0) {
-      const obs = live.filter((e) => e.cls === 'obs');
-      this.obstacleTimer -= dt;
-      if (this.obstacleTimer <= 0 && obs.length < this.diff.maxObstacles) {
-        this._spawnObstacle();
-        this.obstacleTimer = this.diff.obstacleGap * rand(0.8, 1.25);
-      } else if (this.obstacleTimer <= 0) {
-        this.obstacleTimer = 0.6;
-      }
-    }
+    this._feed(dt, 'enemyTimer',
+      d.enemyPool.length > 0 && live.filter((e) => e.cls === 'enemy').length < d.maxEnemies,
+      d.enemyGap, () => this._spawnFrom(d.enemyPool, makeEnemy, ENEMIES, 100));
+
+    this._feed(dt, 'obstacleTimer',
+      d.obstaclePool.length > 0 && live.filter((e) => e.cls === 'obs').length < d.maxObstacles,
+      d.obstacleGap, () => this._spawnFrom(d.obstaclePool, makeObstacle, OBSTACLES, 90));
   }
 
-  _spawnCollectable() {
-    const pool = this.diff.collectPool;
-    const type = pool[Math.floor(Math.random() * pool.length)];
-    const def = COLLECTABLES[type];
-    const spot = this._freeSpot((def.r || 12) * this.S, 60);
-    if (!spot) return;
-    this.entities.push(makeCollectable(type, spot.x, spot.y, this.S, this.diff));
+  // One spawn clock, three families. When the field is full the timer just
+  // holds, so nothing queues up and dumps all at once when a slot frees.
+  _feed(dt, key, room, gap, spawn) {
+    if (!room) { this[key] = Math.min(this[key], gap * 0.5); return; }
+    this[key] -= dt;
+    if (this[key] > 0) return;
+    spawn();
+    this[key] = gap * rand(0.8, 1.25);
   }
 
-  _spawnObstacle() {
-    const pool = this.diff.obstaclePool;
+  _spawnFrom(pool, make, defs, clear) {
+    if (!pool.length) return;
     const type = pool[Math.floor(Math.random() * pool.length)];
-    const def = OBSTACLES[type];
+    const def = defs[type];
     const guess = (def.r || def.armLen || 30) * this.S;
-    const spot = this._freeSpot(guess, 90);
+    const spot = this._freeSpot(guess, clear);
     if (!spot) return;
-    this.entities.push(makeObstacle(type, spot.x, spot.y, this.S, this.diff));
+    this.entities.push(make(type, spot.x, spot.y, this.S, this.diff));
   }
 
   // Find somewhere that isn't on top of the ball, a paddle or another entity.
@@ -443,6 +546,7 @@ export class Game {
     this.hooks.onFinish?.({
       cleared, reason, run: this.run,
       score: this.score, target: this.target,
+      gold: this.gold,
       timeLeft: this.timeLeft, bonus,
       livesLeft: this.lives,
     });

@@ -1,156 +1,185 @@
 // Entity registry, factories, per-frame behaviour and hit tests.
 //
-// Two families, and the split is now absolute:
-//   cls 'col' — collectables. Worth points. Some wear a shield you have to
-//               boost through first, but none of them can ever hurt you.
-//   cls 'obs' — obstacles. Worth nothing, wear nothing, and are lethal on any
-//               contact whatsoever. There is no way through one.
-//
-// Every entity is collided against as a circle except the rect-shaped obstacles
-// (SLAB, SHARD) and ROTOR (a hub plus swept arms).
+// Three families, and each one answers a different question:
+//   cls 'gold'  — the currency. MOTEs are picked up by touching them; ORE has
+//                 to be shoved into to shake them loose. Never dangerous.
+//   cls 'enemy' — worth points, and the only things that can be *defeated*.
+//                 Every enemy has a strength, and so does the ball; the bigger
+//                 number wins the contact. Some wear a shield with a weak point
+//                 in it, which is the only way in.
+//   cls 'obs'   — hazards. No strength, no points, no way through. Touching one
+//                 costs health, full stop.
 //
 // ── the visual language ─────────────────────────────────────────────────────
 //
-// Shape names the family:
-//   O  collectable — bank it
-//   X  obstacle    — it will cost you a life
+//   gold    #ffcf3d  gold. Motes and ore, and nothing else is ever this colour.
+//   orange  #ff9633  boost. The boosting ball, the paddle whose shove is up
+//                    next, and a shield's weak point — because a weak point is
+//                    precisely a place where boost goes.
+//   pink    #ff5fa8  an enemy. Beatable, if your number is big enough.
+//   red     #ff4a55  an obstacle. Not beatable at any number.
+//   steel   #7d8794  shield plating. Inert: it will not hurt you and you cannot
+//                    hurt it. It is a wall with a hole in it.
 //
-// Colour names it a second time, so it reads at a glance without having to pick
-// a shape out at speed:
-//   cool   collectable. Mint sits still, blue moves. That is all hue means here.
-//   red    obstacle. One hue, because there is now only one answer to an
-//          obstacle: do not touch it.
-//   orange a shield, and the boosted ball that strips it. Orange is not a
-//          family — it is a *state*, and it means the same thing wherever it
-//          appears: this is the thing boost is for.
+// Shape says it a second time: gold is an O, obstacles are an X, and an enemy
+// wears its strength as a numeral — the one glyph you actually have to read,
+// because the whole enemy interaction is comparing it against the ball's.
 //
-// The ball is the only thing on the field that changes colour, and colour alone
-// is how it says what it is doing — no rings, no dots, no outline. There are
-// two states and one of them is "nothing":
-//   orange  boosting. It is flying, and it strips a shield.
-//   ink     not boosting.
-//
-// The rail between the paddles never changes except at the hot end — see
-// drawLine. It reports nothing about anybody's fingers.
+// The ball says what it is doing with colour alone — orange while a shove is
+// pushing it along, ink otherwise — and carries its own strength as a numeral.
 
 export const PALETTE = {
   ink: '#e9ecef',
-  // The boosted ball, its trail, the hot paddle, and every shield in the game.
-  // One colour for one idea: boost is the only key, and this is what it looks
-  // like.
   boost: '#ff9633',
-  // Every obstacle, always.
+  gold: '#ffcf3d',
+  enemy: '#ff5fa8',
   hazard: '#ff4a55',
+  plate: '#7d8794',
 };
 
-// Cool. Identity only: mint is a piece that sits still, blue is one that moves.
-export const COOL = {
-  mint: '#8ef0d0',
-  blue: '#48a8f0',
-};
-
-// There is exactly one shield, and one thing that opens it. It is drawn in the
-// colour of the ball that strips it, so the ring and the key are the same
-// substance — that is the whole rule.
-export const SHIELD = {
-  color: PALETTE.boost,
-  label: 'a boosted ball',
-};
-
-export const isWarm = (c) => c === PALETTE.hazard || c === PALETTE.boost;
-export const isCool = (c) => Object.values(COOL).includes(c);
-
-// The two states the ball can be in. Orange strips a shield; ink is everything
-// else, and there is no third thing.
 export const BALL_STATES = ['boost', 'normal'];
+export const ballColorFor = (state) => (state === 'boost' ? PALETTE.boost : PALETTE.ink);
 
-export function ballColorFor(state) {
-  return state === 'boost' ? PALETTE.boost : PALETTE.ink;
-}
+// ── gold ────────────────────────────────────────────────────────────────────
 
-// Does the ball strip a shield in this state? One question, one answer.
-export const shieldBreaks = (world) => !!world.boosted;
-
-// ── collectables ────────────────────────────────────────────────────────────
-//
-// All of the game's points are here. The plain two are tempo — touch and bank.
-// The shielded three are the income, and they are the only reason to boost:
-// each good pass strips `power` layers, and the pass that takes the last one
-// also banks the piece.
-//
-// The shielded variants differ in exactly one number, so the ring count you can
-// see is the whole story. They are worth steeply more than the layer count
-// alone would suggest, because standing a line still over one for several
-// passes is time spent not dodging.
-export const COLLECTABLES = {
+export const GOLD = {
   mote: {
-    key: 'mote', cls: 'col', label: 'MOTE', color: COOL.mint,
-    value: 60, r: 10, hp: 0,
-    blurb: 'Sits still and waits. Steer the line across it and it is banked — no rings, no boost, no timing.',
-    hint: 'All it asks is that the two of you can put the line where you want it.',
+    key: 'mote', cls: 'gold', label: 'GOLD MOTE', color: PALETTE.gold,
+    gold: 15, r: 9,
+    blurb: 'Loose gold. Steer the line across it and it is yours — no boost, no timing, no risk.',
+    hint: 'Gold buys upgrades between runs. It is not worth any points.',
   },
-  drifter: {
-    key: 'drifter', cls: 'col', label: 'DRIFTER', color: COOL.blue,
-    value: 140, r: 10, hp: 0, speed: 52,
-    blurb: 'The same mote, wandering — blue because it moves. It bounces off the walls and never stops; the stub on its back points where it has come from.',
-    hint: 'Lead it. Park the line where it is going, not where it is — or boost to close the gap.',
+  ore: {
+    key: 'ore', cls: 'gold', label: 'GOLD ORE', color: PALETTE.gold,
+    gold: 0, r: 21, charges: 3, yield: 3,
+    blurb: 'A seam of gold locked in rock. A boosted ball cracks a charge out of it and scatters loose motes; a plain ball bounces off nothing and does nothing at all.',
+    hint: 'Three charges in a fresh seam. Take turns shoving so the ball arrives orange every pass.',
   },
-  ward: {
-    key: 'ward', cls: 'col', label: 'WARD', color: COOL.mint,
-    value: 260, r: 13, hp: 1,
-    blurb: 'A mote with one orange ring around it. A plain ball passes straight through and does nothing; one boosted pass takes the ring and banks it in the same touch.',
-    hint: 'The gentlest thing to practise the lift on — a single well-aimed shove is the whole piece.',
+};
+
+// ── enemies ─────────────────────────────────────────────────────────────────
+//
+// A contact with an enemy's body is settled by one comparison: ball strength
+// against enemy strength. Win it and the enemy dies and pays; lose it and the
+// ball takes the damage instead and is thrown back the way it came.
+//
+// A shield changes how you *reach* the body, not how the fight resolves. It is
+// a solid ring with one or two weak points cut into it, and a weak point faces
+// one player's end of the phone — so the ball can only come in through it while
+// running away from that player, which means that player's lift is the one that
+// has to land. A CYCLOPS is the pure case: one weak point, one player's job.
+export const ENEMIES = {
+  drone: {
+    key: 'drone', cls: 'enemy', label: 'DRONE', color: PALETTE.enemy,
+    strength: 1, value: 200, r: 15, weak: 0,
+    blurb: 'Bare, unshielded and weak. Any ball at all matches its strength at the start of a run, so it dies to a plain pass.',
+    hint: 'Watch the numbers. Once a run starts adding strength, even a drone needs a shove behind the ball.',
   },
-  shell: {
-    key: 'shell', cls: 'col', label: 'SHELL', color: COOL.mint,
-    value: 520, r: 15, hp: 2,
-    blurb: 'The same idea behind two rings. Two boosted passes at power 1, and the second one banks it.',
-    hint: 'Take turns lifting, so the ball is orange running in both directions.',
+  cyclops: {
+    key: 'cyclops', cls: 'enemy', label: 'CYCLOPS', color: PALETTE.enemy,
+    strength: 2, value: 600, r: 22, weak: 1,
+    blurb: 'One eye. A steel ring with a single orange weak point cut in it, facing one end of the phone — and the ball can only enter through it while running away from that end.',
+    hint: 'Whoever it is facing has to be the one who shoves. The other player just steers and keeps still.',
   },
-  vault: {
-    key: 'vault', cls: 'col', label: 'VAULT', color: COOL.mint,
-    value: 900, r: 17, hp: 3,
-    blurb: 'Three rings, and the biggest payout on the field. Nothing about it is dangerous — it just takes long enough that whatever else is on the field becomes the problem.',
-    hint: 'Worth committing to, but look at what is wandering nearby before you park the line.',
+  janus: {
+    key: 'janus', cls: 'enemy', label: 'JANUS', color: PALETTE.enemy,
+    strength: 3, value: 1000, r: 25, weak: 2,
+    blurb: 'Two faces, one looking at each of you, so either player can be the one to shove it. It is stronger than anything else on the field to make up for the easier opening.',
+    hint: 'The easy one to hit and the hard one to beat. Check your strength before you commit.',
   },
 };
 
 // ── obstacles ───────────────────────────────────────────────────────────────
-//
-// Every obstacle is the same proposition: red, unbreakable, worth nothing, and
-// lethal on contact. They carry no shields and no gates — there is nothing to
-// learn about them beyond where they are and where they are going.
+
 export const OBSTACLES = {
   slab: {
-    key: 'slab', cls: 'obs', label: 'SLAB', shape: 'rect',
-    value: 0, hp: 0,
-    blurb: 'A long red bar that sits exactly where it landed. Nothing strips it and nothing gets through it.',
+    key: 'slab', cls: 'obs', label: 'SLAB', shape: 'rect', color: PALETTE.hazard,
+    blurb: 'A long red bar that sits exactly where it landed. It has no strength to beat — it just hurts.',
     hint: 'Pure avoidance. Swing the line around the end of it.',
   },
   shard: {
-    key: 'shard', cls: 'obs', label: 'SHARD', shape: 'rect',
-    value: 0, hp: 0, speed: 46,
-    blurb: 'A slab the size of a chip, loose on the field. It drifts, bounces off the walls and never stops — same red, same answer, but it comes to you.',
+    key: 'shard', cls: 'obs', label: 'SHARD', shape: 'rect', color: PALETTE.hazard,
+    speed: 46,
+    blurb: 'A slab the size of a chip, loose on the field. It drifts, bounces off the walls and never stops.',
     hint: 'Small enough to lose track of. Watch where it is heading, not where it is.',
   },
   rotor: {
-    key: 'rotor', cls: 'obs', label: 'ROTOR', shape: 'rotor',
-    value: 0, hp: 0, armLen: 44, spin: 1.5,
+    key: 'rotor', cls: 'obs', label: 'ROTOR', shape: 'rotor', color: PALETTE.hazard,
+    armLen: 44, spin: 1.5,
     blurb: 'A hub with two sweeping arms. The arms are exactly as lethal as the hub.',
     hint: 'Cross behind it, never alongside it.',
   },
 };
 
-// One hue for every obstacle, so it cannot be given a colour that disagrees
-// with how it behaves — there is only one behaviour.
-for (const d of Object.values(OBSTACLES)) d.color = PALETTE.hazard;
+export const ALL = { ...GOLD, ...ENEMIES, ...OBSTACLES };
+export const defOf = (type) => ALL[type];
+export const stateColorOf = (e) => e.color;
 
-export function stateColorOf(e) {
-  return e.cls === 'obs' ? PALETTE.hazard : e.color;
+// ── weak points ─────────────────────────────────────────────────────────────
+//
+// A weak point is an arc on the shield, centred on the direction of one
+// player's paddle. Player A is at the bottom of the screen (larger y), so a
+// weak point on side 'a' sits at the bottom of the ring — and a ball coming in
+// through it must be travelling away from A, which is dir +1.
+
+export const WEAK_HALF = 0.5;                       // half-width in radians
+
+export const weakAngle = (side) => (side === 'a' ? Math.PI / 2 : -Math.PI / 2);
+export const admitsDir = (side) => (side === 'a' ? 1 : -1);
+
+const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+
+// Which weak point, if any, is the ball entering through right now? Both things
+// have to be true at once: it is in the arc, and it is going the way that arc
+// faces. Coming at the right hole from the wrong side is just a wall.
+export function weakPointAt(e, x, y, dir) {
+  if (!e.weak || !e.weak.length) return null;
+  const ang = Math.atan2(y - e.y, x - e.x);
+  for (const w of e.weak) {
+    if (Math.abs(wrap(ang - weakAngle(w.side))) > WEAK_HALF) continue;
+    if (Math.sign(dir) !== admitsDir(w.side)) continue;
+    return w;
+  }
+  return null;
 }
 
-export const ALL = { ...COLLECTABLES, ...OBSTACLES };
-export const defOf = (type) => ALL[type];
+// The plated spans of a shield: everything the weak points do not cover. Used
+// for drawing, and derived from the same table, so the steel cannot end up
+// somewhere the rule says there is a hole.
+export function shieldSpans(e) {
+  const gaps = e.weak
+    .map((w) => ({ side: w.side, a0: weakAngle(w.side) - WEAK_HALF, a1: weakAngle(w.side) + WEAK_HALF }))
+    .sort((p, q) => p.a0 - q.a0);
+  const plate = gaps.map((g, i) => {
+    const next = gaps[(i + 1) % gaps.length];
+    return [g.a1, next.a0 + (i + 1 === gaps.length ? Math.PI * 2 : 0)];
+  });
+  return { gaps, plate };
+}
+
+// ── contact rules ───────────────────────────────────────────────────────────
+//
+// `world` is what the ball brings to a contact: where it is, which way it is
+// going, whether a shove is behind it and how hard it is hitting.
+
+// 'kill'  — the enemy dies and pays points
+// 'hurt'  — the ball takes the damage and is thrown back
+// 'block' — the shield turned it away; nobody is any worse off
+export function resolveEnemy(e, world) {
+  if (e.weak.length) {
+    const w = weakPointAt(e, world.x, world.y, world.dir);
+    if (!w || !world.boosted) return 'block';
+  }
+  return world.strength >= e.strength ? 'kill' : 'hurt';
+}
+
+// 'crack' — a charge comes out as loose motes
+// 'pass'  — nothing happens; ore is never dangerous
+export const resolveOre = (world) => (world.boosted ? 'crack' : 'pass');
+
+// A contact that turns the ball round. Blocked by a shield, or beaten by
+// something stronger — either way the ball goes back the way it came.
+export const reverses = (r) => r === 'block' || r === 'hurt';
 
 // ── factories ───────────────────────────────────────────────────────────────
 
@@ -171,38 +200,60 @@ function base(def, x, y, S) {
     cool: 0,       // re-hit lockout
     ttl: Infinity,
     fade: 0,       // set when expiring, drives the draw-out
-    hp: 0, hpMax: 0,
+    weak: [],
     dead: false,
   };
 }
 
-function drift(e, speed, S, diff, rng) {
+function scatter(e, speed, S, diff, rng) {
   const a = rng() * Math.PI * 2;
-  const sp = speed * S * diff.entitySpeed;
+  const sp = speed * S * (diff.entitySpeed || 1);
   e.vx = Math.cos(a) * sp;
   e.vy = Math.sin(a) * sp;
 }
 
-export function makeCollectable(type, x, y, S, diff, rng = Math.random) {
-  const def = COLLECTABLES[type];
+export function makeGold(type, x, y, S, diff, rng = Math.random) {
+  const def = GOLD[type];
   const e = base(def, x, y, S);
-  e.value = Math.round(def.value * diff.valueScale);
-  e.hpMax = def.hp || 0;
-  e.hp = e.hpMax;
+  e.gold = def.gold;
+  if (type === 'ore') {
+    e.charges = def.charges + (diff.oreBonus || 0);
+    e.chargesMax = e.charges;
+    e.yield = def.yield;
+    e.ttl = diff.oreTtl || Infinity;
+  }
+  return e;
+}
 
-  // A shielded piece cannot be allowed to sit there forever: it is the only
-  // collectable on the field while it lives, so a run could otherwise stall
-  // behind one the players cannot get to.
-  if (e.hpMax) e.ttl = diff.collectTtl;
+// A mote shaken out of a seam: it flies off, slows to a stop and expires if
+// nobody comes and gets it.
+export function makeLooseMote(x, y, S, diff, rng = Math.random) {
+  const e = makeGold('mote', x, y, S, diff, rng);
+  scatter(e, 70, S, { entitySpeed: 1 }, rng);
+  e.damp = 1.9;
+  e.spawnT = 0.25;
+  e.ttl = 9;
+  return e;
+}
 
-  if (def.speed) drift(e, def.speed, S, diff, rng);
+export function makeEnemy(type, x, y, S, diff, rng = Math.random) {
+  const def = ENEMIES[type];
+  const e = base(def, x, y, S);
+  e.strength = def.strength + (diff.strengthBonus || 0);
+  e.value = Math.round(def.value * (diff.valueScale || 1));
+  e.ttl = diff.enemyTtl || Infinity;
+  e.spawnT = 1.2;
+  e.shieldR = e.r + 9 * S;
+
+  // One weak point faces whichever end the dice pick; two face both.
+  if (def.weak === 1) e.weak = [{ side: rng() < 0.5 ? 'a' : 'b' }];
+  else if (def.weak >= 2) e.weak = [{ side: 'a' }, { side: 'b' }];
   return e;
 }
 
 export function makeObstacle(type, x, y, S, diff, rng = Math.random) {
   const def = OBSTACLES[type];
   const e = base(def, x, y, S);
-  e.value = 0;
   e.ttl = diff.obstacleTtl;
   e.spawnT = 1.2;
 
@@ -217,14 +268,12 @@ export function makeObstacle(type, x, y, S, diff, rng = Math.random) {
       break;
     }
     case 'shard': {
-      // The slab, chipped down and set loose.
       e.horiz = rng() < 0.5;
-      const long = 30 * S;
-      const thin = 13 * S;
+      const long = 30 * S, thin = 13 * S;
       e.w = e.horiz ? long : thin;
       e.h = e.horiz ? thin : long;
       e.r = Math.max(e.w, e.h) / 2;
-      drift(e, def.speed, S, diff, rng);
+      scatter(e, def.speed, S, diff, rng);
       break;
     }
     case 'rotor': {
@@ -248,6 +297,10 @@ export function updateEntity(e, dt, bounds) {
   if (e.cool > 0) e.cool = Math.max(0, e.cool - dt);
 
   if (e.vx || e.vy) {
+    if (e.damp) {
+      const k = Math.max(0, 1 - e.damp * dt);
+      e.vx *= k; e.vy *= k;
+    }
     e.x += e.vx * dt;
     e.y += e.vy * dt;
     const pad = e.r;
@@ -283,7 +336,8 @@ function circleRect(cx, cy, cr, rx, ry, rw, rh) {
   return dx * dx + dy * dy < cr * cr;
 }
 
-// Is the ball (a circle) overlapping this entity right now?
+// Is the ball (a circle) overlapping this entity right now? A shielded enemy is
+// tested against its shield, because that is the outer edge you meet first.
 export function hitTest(e, x, y, br) {
   if (e.dead || e.spawnT > 0) return false;
 
@@ -301,22 +355,6 @@ export function hitTest(e, x, y, br) {
     return Math.hypot(x - e.x, y - e.y) < br + e.hubR;
   }
 
-  const rr = br + e.r;
+  const rr = br + (e.weak.length ? e.shieldR : e.r);
   return (x - e.x) ** 2 + (y - e.y) ** 2 < rr * rr;
-}
-
-// Every obstacle is lethal, always. Kept as a function because it is the one
-// rule the whole warm half of the palette stands on.
-export const isLethal = (e) => e.cls === 'obs';
-
-// How a contact with a collectable resolves.
-//   'collect' — bank it
-//   'damage'  — a layer comes off the shield
-//   'pass'    — the ball goes through and nothing happens
-//
-// A collectable can never hurt you, so there is no fourth answer. An unboosted
-// ball simply does not interact with a shielded one.
-export function resolveCollectable(e, world) {
-  if (e.hp > 0) return shieldBreaks(world) ? 'damage' : 'pass';
-  return 'collect';
 }

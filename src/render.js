@@ -1,20 +1,24 @@
 // All drawing. Minimal palette, thin strokes, no textures.
 //
 // The visual language is documented at the top of entities.js. In short:
-//   O and a cool hue = collectable; X and red = obstacle, and every obstacle is
-//   red because every obstacle has the same answer: don't.
-//   Orange is a state, not a family: it is every shield, and the boosted ball
-//   and trail that strip one.
-//   The ball says what it is doing with colour and nothing else — no ring, no
-//   dots, no outline. The line says nothing at all: it is a faded dotted rail
-//   between the paddles and it never changes.
+//   gold O = gold; red X = an obstacle; a pink ring with a numeral in it = an
+//   enemy, and the numeral is its strength.
+//   Orange is boost, wherever it appears: the boosting ball, the paddle whose
+//   shove is up next, and a shield's weak point.
+//   Steel is shield plating — inert, and the one thing on the field that is
+//   neither a threat nor a prize.
+//   The ball says what it is doing with colour and nothing else, and carries
+//   its own strength as a numeral so the comparison is right there.
 
 import { CFG } from './config.js';
-import { PALETTE, SHIELD, stateColorOf, ballColorFor } from './entities.js';
+import { PALETTE, shieldSpans, weakAngle, ballColorFor } from './entities.js';
 
 const INK = PALETTE.ink;
 const ORANGE = PALETTE.boost;
 const RED = PALETTE.hazard;
+const GOLD = PALETTE.gold;
+const PINK = PALETTE.enemy;
+const PLATE = PALETTE.plate;
 const DIM = '#6d737b';
 const BG = '#08090b';
 const TAU = Math.PI * 2;
@@ -80,6 +84,16 @@ function pathO(ctx, x, y, r) {
   ctx.arc(x, y, r, 0, TAU);
 }
 
+function pathPoly(ctx, x, y, r, n, rot) {
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const a = rot + (i / n) * TAU;
+    const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
+    if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+  }
+  ctx.closePath();
+}
+
 function pathX(ctx, x, y, r) {
   const k = r * 0.72;
   ctx.beginPath();
@@ -87,27 +101,48 @@ function pathX(ctx, x, y, r) {
   ctx.moveTo(x + k, y - k); ctx.lineTo(x - k, y + k);
 }
 
-// A shield: one arc segment per layer left, in the colour of the ball that
-// strips it. Spent layers stay as ghosts of themselves so you can always see
-// how deep the piece was.
-function segRing(ctx, x, y, r, total, left, S) {
-  if (!total) return;
-  // save/restore, or the shield's stroke leaks onto the body drawn after it.
+// A shield: steel plating everywhere except the weak points, which are orange
+// because orange has meant "boost goes here" all along. Both the plate spans
+// and the gaps come out of shieldSpans(), which is the same table the contact
+// rule reads — so the hole you can see is exactly the hole that is there.
+function drawShield(ctx, e, S) {
+  if (!e.weak.length) return;
+  const { gaps, plate } = shieldSpans(e);
+
   ctx.save();
-  ctx.strokeStyle = SHIELD.color;
-  ctx.globalAlpha *= 0.95;
-  ctx.lineWidth = 2.7 * S;
   ctx.lineCap = 'butt';
   ctx.setLineDash([]);
-  const lit = ctx.globalAlpha;
-  const gap = total > 1 ? 0.18 : 0;
-  const span = TAU / total - gap;
-  for (let i = 0; i < total; i++) {
-    const a0 = -Math.PI / 2 + i * (TAU / total) + gap / 2;
-    ctx.globalAlpha = lit * (i < left ? 1 : 0.13);
+  const baseA = ctx.globalAlpha;
+
+  ctx.strokeStyle = PLATE;
+  ctx.globalAlpha = baseA * 0.9;
+  ctx.lineWidth = 4 * S;
+  for (const [a0, a1] of plate) {
     ctx.beginPath();
-    ctx.arc(x, y, r, a0, a0 + span);
+    ctx.arc(e.x, e.y, e.shieldR, a0, a1);
     ctx.stroke();
+  }
+
+  // The gap, drawn as a slightly heavier orange lip on each side of the hole,
+  // so the opening reads as a mouth rather than a missing piece.
+  ctx.strokeStyle = ORANGE;
+  ctx.globalAlpha = baseA;
+  ctx.lineWidth = 3 * S;
+  for (const gp of gaps) {
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, e.shieldR, gp.a0, gp.a1);
+    ctx.stroke();
+
+    // A stub pointing out the way in, along the axis the weak point faces.
+    const c = weakAngle(gp.side);
+    const ux = Math.cos(c), uy = Math.sin(c);
+    ctx.globalAlpha = baseA * 0.75;
+    ctx.lineWidth = 2 * S;
+    ctx.beginPath();
+    ctx.moveTo(e.x + ux * (e.shieldR + 3 * S), e.y + uy * (e.shieldR + 3 * S));
+    ctx.lineTo(e.x + ux * (e.shieldR + 9 * S), e.y + uy * (e.shieldR + 9 * S));
+    ctx.stroke();
+    ctx.globalAlpha = baseA;
   }
   ctx.restore();
 }
@@ -154,11 +189,13 @@ export function render(ctx, g) {
   }
 }
 
-// The ball is the readout: whichever state it is in is the shield it can strip,
-// and it is drawn as that shield's colour.
+// The ball is the readout: orange while a shove is behind it, ink otherwise.
+// Its strength rides on it as a numeral, and that number goes up the moment it
+// turns orange — the colour and the number say the same thing twice.
 function ballKeys(g) {
   const state = g.phase === 'play' ? g.ball.state : 'normal';
-  return { state, color: ballColorFor(state) };
+  const strength = (g.strength || 0) + (state === 'boost' ? (g.boostStrength || 0) : 0);
+  return { state, strength, color: ballColorFor(state) };
 }
 
 // ── field furniture ─────────────────────────────────────────────────────────
@@ -280,12 +317,15 @@ function drawBall(ctx, g, A, B) {
     ctx.fill();
   }
 
-  // Colour alone is the state. No halo, no outline, no dots — if the ball is
-  // orange it can strip a shield, and there is nothing else to read.
+  // Colour alone is the state — no halo, no outline, no dots. The numeral is a
+  // different question: not what the ball is doing, but what it is worth in a
+  // fight. Punched out of the fill so it cannot be mistaken for a piece.
   ctx.globalAlpha = 1;
   ctx.fillStyle = key.color;
   pathO(ctx, x, y, r);
   ctx.fill();
+  text(ctx, String(key.strength), x, y + 0.5 * S,
+    { size: r * 1.25, color: BG, weight: 700 });
   ctx.restore();
 }
 
@@ -300,7 +340,8 @@ function drawEntity(ctx, g, e) {
   if (e.fade) a *= e.fade;
   ctx.globalAlpha = a;
 
-  if (e.cls === 'col') drawCollectable(ctx, g, e);
+  if (e.cls === 'gold') drawGold(ctx, g, e);
+  else if (e.cls === 'enemy') drawEnemy(ctx, g, e);
   else drawObstacle(ctx, g, e);
 
   // Telegraph: a piece is inert until this collapses onto it. It takes the
@@ -308,14 +349,14 @@ function drawEntity(ctx, g, e) {
   if (e.spawnT > 0) {
     const k = Math.min(1, e.spawnT / 1.2);
     ctx.globalAlpha = 0.5 * (1 - k * 0.4);
-    ctx.strokeStyle = stateColorOf(e);
+    ctx.strokeStyle = e.color;
     ctx.lineWidth = 1 * S;
     ctx.setLineDash([3 * S, 4 * S]);
     if (e.shape === 'rect') {
       const pad = 14 * S * k;
       roundRect(ctx, e.x - e.w / 2 - pad, e.y - e.h / 2 - pad, e.w + pad * 2, e.h + pad * 2, 3 * S);
     } else {
-      pathO(ctx, e.x, e.y, (e.r || 18 * S) * (1 + k * 1.5));
+      pathO(ctx, e.x, e.y, (e.shieldR || e.r || 18 * S) * (1 + k * 1.5));
     }
     ctx.stroke();
     ctx.setLineDash([]);
@@ -323,52 +364,79 @@ function drawEntity(ctx, g, e) {
   ctx.restore();
 }
 
-function drawCollectable(ctx, g, e) {
+// ── gold ────────────────────────────────────────────────────────────────────
+
+function drawGold(ctx, g, e) {
   const S = g.S;
   const baseA = ctx.globalAlpha;
+  ctx.strokeStyle = GOLD;
+  ctx.fillStyle = GOLD;
 
-  // Shields live here now, and nowhere else. One orange arc per layer left,
-  // outside the body — the piece underneath is the same cool O either way,
-  // because what is behind the rings is never in doubt.
-  segRing(ctx, e.x, e.y, e.r + 3 * S, e.hpMax, e.hp, S);
+  if (e.type === 'ore') {
+    // A chunk, not a bead — a seam has to look like something you hit rather
+    // than something you sweep up. One notch per charge still in it.
+    ctx.globalAlpha = baseA * (0.16 + (e.flare || 0) * 0.3);
+    pathPoly(ctx, e.x, e.y, e.r, 6, e.age * 0.25);
+    ctx.fill();
+    ctx.globalAlpha = baseA * 0.92;
+    ctx.lineWidth = 2 * S;
+    pathPoly(ctx, e.x, e.y, e.r, 6, e.age * 0.25);
+    ctx.stroke();
 
-  ctx.strokeStyle = e.color;
-  ctx.fillStyle = e.color;
+    const n = e.chargesMax, sp = 6.5 * S;
+    for (let i = 0; i < n; i++) {
+      ctx.globalAlpha = baseA * (i < e.charges ? 1 : 0.16);
+      pathO(ctx, e.x + (i - (n - 1) / 2) * sp, e.y, 2.1 * S);
+      ctx.fill();
+    }
+    ctx.globalAlpha = baseA;
+    return;
+  }
 
+  // A mote: a filled O with a pulse going out, because it is pure invitation.
   const pulse = 1 + Math.sin(e.age * 9) * 0.12;
   pathO(ctx, e.x, e.y, e.r * 0.62 * pulse);
   ctx.fill();
-
-  // The outgoing pulse only plays on a piece you can actually take. Behind a
-  // shield it would be an invitation to something that does nothing.
-  if (!e.hp) {
-    ctx.globalAlpha = baseA * 0.4;
-    ctx.lineWidth = 1.2 * S;
-    pathO(ctx, e.x, e.y, e.r * (0.7 + ((e.age * 1.6) % 1) * 0.6));
-    ctx.stroke();
-    ctx.globalAlpha = baseA;
-  }
-
-  if (e.vx || e.vy) {
-    const m = Math.hypot(e.vx, e.vy) || 1;
-    ctx.globalAlpha = baseA * 0.4;
-    ctx.lineWidth = 1.5 * S;
-    ctx.beginPath();
-    ctx.moveTo(e.x, e.y);
-    ctx.lineTo(e.x - (e.vx / m) * e.r * 1.9, e.y - (e.vy / m) * e.r * 1.9);
-    ctx.stroke();
-    ctx.globalAlpha = baseA;
-  }
+  ctx.globalAlpha = baseA * 0.4;
+  ctx.lineWidth = 1.2 * S;
+  pathO(ctx, e.x, e.y, e.r * (0.7 + ((e.age * 1.6) % 1) * 0.6));
+  ctx.stroke();
+  ctx.globalAlpha = baseA;
 }
+
+// ── enemies ─────────────────────────────────────────────────────────────────
+
+// A pink ring with its strength written inside it. The numeral is the whole
+// point of the piece: you read it, you read the one on the ball, and you know
+// whether to shove or stay away.
+function drawEnemy(ctx, g, e) {
+  const S = g.S;
+  const baseA = ctx.globalAlpha;
+  if (e.flare) ctx.globalAlpha = Math.min(1, baseA + e.flare * 0.5);
+
+  drawShield(ctx, e, S);
+
+  ctx.strokeStyle = PINK;
+  ctx.fillStyle = PINK;
+  ctx.globalAlpha = baseA * 0.14;
+  pathO(ctx, e.x, e.y, e.r); ctx.fill();
+  ctx.globalAlpha = baseA * 0.95;
+  ctx.lineWidth = 2 * S;
+  pathO(ctx, e.x, e.y, e.r); ctx.stroke();
+
+  text(ctx, String(e.strength), e.x, e.y + 0.5 * S,
+    { size: e.r * 1.15, color: PINK, weight: 600 });
+  ctx.globalAlpha = baseA;
+}
+
+// ── obstacles ───────────────────────────────────────────────────────────────
 
 function drawObstacle(ctx, g, e) {
   const S = g.S;
   const baseA = ctx.globalAlpha;
-  const col = stateColorOf(e);
 
-  if (e.flare) ctx.globalAlpha = Math.min(1, baseA + e.flare * 0.6);
-  ctx.strokeStyle = col;
-  ctx.fillStyle = col;
+  ctx.strokeStyle = RED;
+  ctx.fillStyle = RED;
   ctx.lineWidth = 1.6 * S;
 
   switch (e.shape) {
@@ -381,7 +449,6 @@ function drawObstacle(ctx, g, e) {
       roundRect(ctx, x, y, e.w, e.h, 2 * S); ctx.fill();
       ctx.globalAlpha = baseA * 0.85;
       roundRect(ctx, x, y, e.w, e.h, 2 * S); ctx.stroke();
-      // Repeat the X along the body so a long slab still reads as an obstacle.
       ctx.globalAlpha = baseA;
       ctx.lineWidth = 1.5 * S;
       const along = e.horiz ? e.w : e.h;
@@ -391,11 +458,10 @@ function drawObstacle(ctx, g, e) {
         pathX(ctx, e.x + (e.horiz ? f * e.w : 0), e.y + (e.horiz ? 0 : f * e.h), k);
         ctx.stroke();
       }
-      // A stub out the back of a moving one, the same tell the drifter wears.
+      // A stub out the back of a moving one, so you can read where it is going.
       if (e.vx || e.vy) {
         const m = Math.hypot(e.vx, e.vy) || 1;
         ctx.globalAlpha = baseA * 0.45;
-        ctx.lineWidth = 1.5 * S;
         ctx.beginPath();
         ctx.moveTo(e.x, e.y);
         ctx.lineTo(e.x - (e.vx / m) * e.r * 2.1, e.y - (e.vy / m) * e.r * 2.1);
@@ -469,29 +535,45 @@ function drawRunStrip(ctx, g) {
   const S = g.S;
   const endless = g.mode === 'playground';
 
+  // Points and gold are two different piles and are never added together, so
+  // they are never shown together either. Points sit on the target line; gold
+  // sits on its own, in gold.
   text(ctx, endless ? `${g.score}` : `${g.score} / ${g.target}`, 0, -3 * S,
     { size: 13 * S, color: INK, alpha: 0.85, ls: 0.5 });
 
-  text(ctx, `x${g.mult}   ${endless ? 'PLAYGROUND' : fmtTime(g.timeLeft)}`, 0, 9 * S,
+  text(ctx, `${g.gold}g`, -46 * S, 9 * S,
+    { size: 9 * S, color: GOLD, alpha: 0.95, ls: 1, align: 'left' });
+  text(ctx, `x${g.mult}`, 0, 9 * S,
     { size: 9 * S, color: DIM, alpha: 0.95, ls: 1.2 });
+  text(ctx, endless ? 'PLAYGROUND' : fmtTime(g.timeLeft), 46 * S, 9 * S,
+    { size: 9 * S, color: DIM, alpha: 0.95, ls: 1.2, align: 'right' });
 
+  // Health is the ball's, and it is the thing you are about to lose; lives are
+  // how many more balls there are after this one. Two rows, never one.
+  pips(ctx, g.health, g.healthMax, 18 * S, ORANGE, 6.5 * S, 2 * S);
   if (endless) return;
 
   const w = 100 * S;
   ctx.save();
   ctx.globalAlpha = 0.22; ctx.fillStyle = INK;
-  ctx.fillRect(-w / 2, 14 * S, w, 1.6 * S);
+  ctx.fillRect(-w / 2, 25 * S, w, 1.6 * S);
   // Ink, not orange: the HUD is furniture, and orange has a job on the field.
   ctx.globalAlpha = 0.95; ctx.fillStyle = INK;
-  ctx.fillRect(-w / 2, 14 * S, w * Math.min(1, g.score / g.target), 1.6 * S);
+  ctx.fillRect(-w / 2, 25 * S, w * Math.min(1, g.score / g.target), 1.6 * S);
   ctx.restore();
 
-  const n = g.livesMax, sp = 9 * S;
+  pips(ctx, g.lives, g.livesMax, -13 * S, RED, 9 * S, 2.3 * S);
+}
+
+// A row of filled-then-hollow dots, centred on the strip.
+function pips(ctx, left, total, y, color, sp, r) {
+  if (!Number.isFinite(total) || total <= 0) return;
+  const n = Math.min(total, 12);
   for (let i = 0; i < n; i++) {
-    ctx.globalAlpha = i < g.lives ? 0.9 : 0.18;
-    ctx.fillStyle = i < g.lives ? RED : INK;
+    ctx.globalAlpha = i < left ? 0.9 : 0.18;
+    ctx.fillStyle = i < left ? color : INK;
     ctx.beginPath();
-    ctx.arc((i - (n - 1) / 2) * sp, -13 * S, 2.3 * S, 0, TAU);
+    ctx.arc((i - (n - 1) / 2) * sp, y, r, 0, TAU);
     ctx.fill();
   }
   ctx.globalAlpha = 1;
