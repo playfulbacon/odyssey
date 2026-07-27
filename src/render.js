@@ -43,16 +43,35 @@ const fmtTime = (s) => {
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 };
 
-// The rail between the paddles: faded ink dots, and that is the only way it is
-// ever drawn. It is scenery — it shows you where the ball can go, not what
-// anybody is doing.
+// The rail between the paddles: faded dots, drawn one at a time because each
+// one carries its own colour. This sets everything they share.
 export function railStroke(ctx, S) {
   ctx.strokeStyle = INK;
-  ctx.globalAlpha *= 0.4;
+  ctx.globalAlpha *= RAIL_ALPHA;
   ctx.lineWidth = 1.6 * S;
   ctx.lineCap = 'round';
-  ctx.setLineDash([1.5 * S, 4.5 * S]);
+  ctx.setLineDash([]);
 }
+
+export const RAIL_DOT = 1.5;      // length of one dot, before scale
+export const RAIL_GAP = 6;        // dot-to-dot spacing, before scale
+const RAIL_ALPHA = 0.4;           // how faint a cold dot is
+const RAIL_REACH = 0.34;          // how far down the rail the heat carries
+
+// Heat at `u`, the fraction of the rail away from the hot paddle. Squared, so
+// the glow is unmistakably *near* that end rather than a wash over everything.
+export function railHeat(u) {
+  if (u >= RAIL_REACH) return 0;
+  const k = 1 - u / RAIL_REACH;
+  return k * k;
+}
+
+// Ink → orange, precomputed once so the rail costs no string work per frame.
+const chan = (c, i) => parseInt(c.slice(1 + i * 2, 3 + i * 2), 16);
+const mix = (a, b, t) => '#' + [0, 1, 2]
+  .map((i) => Math.round(chan(a, i) + (chan(b, i) - chan(a, i)) * t).toString(16).padStart(2, '0'))
+  .join('');
+const RAIL_RAMP = Array.from({ length: 17 }, (_, i) => mix(INK, ORANGE, i / 16));
 
 // ── the two family glyphs ───────────────────────────────────────────────────
 
@@ -117,8 +136,8 @@ export function render(ctx, g) {
 
   for (const e of g.entities) drawEntity(ctx, g, e);
 
-  drawPaddle(ctx, g, A, g.input.a, +1);
-  drawPaddle(ctx, g, B, g.input.b, -1);
+  drawPaddle(ctx, g, A, g.input.a, +1, 'a');
+  drawPaddle(ctx, g, B, g.input.b, -1, 'b');
 
   drawBall(ctx, g, A, B);
   drawParticles(ctx, g);
@@ -156,23 +175,49 @@ function drawTerritory(ctx, g) {
   ctx.restore();
 }
 
-// One stroke, always the same: faded ink dots from paddle to paddle. The line
-// is the rail the ball runs on and nothing else — it does not report who is
-// holding, and it has no halves. Everything worth knowing is on the ball.
+// Faded dots from paddle to paddle. The rail still says nothing about who is
+// holding — it has no halves and never will. What it does say is which end the
+// ball last came off: orange bleeds a little way down the rail from the hot
+// paddle and washes out into ink, pointing the way the ball is running. Only
+// one end is ever hot, because the ball can only have left one of them.
 function drawLine(ctx, g, A, B) {
+  const S = g.S;
+  const len = Math.hypot(B.x - A.x, B.y - A.y) || 1;
+  const ux = (B.x - A.x) / len, uy = (B.y - A.y) / len;
+  const dot = RAIL_DOT * S, gap = RAIL_GAP * S;
+  const hotAtB = g.lastPaddle === 'b';
+
+  // Centre the run of dots, so the pattern is symmetric end to end and the two
+  // paddles are inset alike however long the rail happens to be.
+  const n = Math.max(1, Math.floor((len - dot) / gap) + 1);
+  const start = (len - ((n - 1) * gap + dot)) / 2;
+
   ctx.save();
-  railStroke(ctx, g.S);
-  ctx.beginPath();
-  ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y);
-  ctx.stroke();
+  railStroke(ctx, S);
+  for (let i = 0; i < n; i++) {
+    const d = start + i * gap;
+    // Distance of this dot from the hot end, as a fraction of the whole rail.
+    const mid = (d + dot / 2) / len;
+    const k = railHeat(hotAtB ? 1 - mid : mid);
+    ctx.strokeStyle = RAIL_RAMP[Math.round(k * 16)];
+    ctx.globalAlpha = RAIL_ALPHA + (1 - RAIL_ALPHA) * 0.72 * k;
+    ctx.beginPath();
+    ctx.moveTo(A.x + ux * d, A.y + uy * d);
+    ctx.lineTo(A.x + ux * (d + dot), A.y + uy * (d + dot));
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
-function drawPaddle(ctx, g, P, p, inward) {
+function drawPaddle(ctx, g, P, p, inward, side) {
   const w = g.paddleW, h = g.paddleH, S = g.S;
+  // The end the ball last came off wears the boost colour, and it is the honest
+  // one to wear it: the ball is running away from this player, so theirs is the
+  // lift that shoves it. Orange still means exactly what it always did.
+  const hot = g.lastPaddle === side;
   ctx.save();
   ctx.globalAlpha = p.touching ? 1 : 0.5;
-  ctx.fillStyle = INK;
+  ctx.fillStyle = hot ? ORANGE : INK;
   roundRect(ctx, P.x - w / 2, P.y - h / 2, w, h, CFG.paddle.round * S);
   ctx.fill();
 

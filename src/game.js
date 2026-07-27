@@ -31,6 +31,7 @@ export class Game {
     this.particles = [];
     this.floaters = [];
     this.ball = { t: 0, dir: 1, state: 'normal', trail: [], x: 0, y: 0 };
+    this.lastPaddle = 'a';     // which end the ball last came off — 'a' or 'b'
     this.shake = 0;
     this.flash = 0;
     this.flashColor = PALETTE.hazard;
@@ -109,6 +110,9 @@ export class Game {
     this.phase = 'launch';
     this.ball.t = t;
     this.ball.dir = t >= 0.5 ? -1 : 1;   // it always sets off away from its paddle
+    // It has not bounced off anything yet, but it is sitting on a paddle and is
+    // about to leave it — same thing, so that end is already hot.
+    this.lastPaddle = t >= 0.5 ? 'b' : 'a';
     this.ball.state = 'normal';
     this.ball.trail.length = 0;
     this.holdT = 0;
@@ -243,11 +247,11 @@ export class Game {
       if (this.ball.t <= 0) {
         this.ball.t = -this.ball.t;
         this.ball.dir = 1;
-        this._paddleHit(A);
+        this._paddleHit(A, 'a');
       } else if (this.ball.t >= 1) {
         this.ball.t = 2 - this.ball.t;
         this.ball.dir = -1;
-        this._paddleHit(B);
+        this._paddleHit(B, 'b');
       }
 
       const p = this.ballPos(A, B);
@@ -265,7 +269,12 @@ export class Game {
     if (this.ball.trail.length > CFG.ball.trail) this.ball.trail.shift();
   }
 
-  _paddleHit(P) {
+  // The paddle the ball just came off is the "hot" end, and it stays hot until
+  // the ball reaches the other one — only ever one at a time. It is exactly the
+  // paddle whose player can boost right now, because the ball is running away
+  // from them, which is why it wears the boost colour.
+  _paddleHit(P, side) {
+    this.lastPaddle = side;
     sfx.paddle();
     this.shake = Math.max(this.shake, 1.4 * this.S);
     const up = P.y > this.H / 2 ? -1 : 1;

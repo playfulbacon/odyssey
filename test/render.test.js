@@ -11,13 +11,17 @@ import assert from 'node:assert/strict';
 import { difficulty, emptyUpgrades } from '../src/config.js';
 import { PALETTE, SHIELD, makeCollectable, makeObstacle } from '../src/entities.js';
 import { Game } from '../src/game.js';
-import { render } from '../src/render.js';
+import { render, railHeat, RAIL_DOT } from '../src/render.js';
 
 // Records every stroke and fill with the state that was live at the time.
 function recorder() {
   const ops = [];
   let st = { strokeStyle: '#000', fillStyle: '#000', globalAlpha: 1, lineWidth: 1, lineCap: 'butt', dash: [] };
   const stack = [];
+  // Geometry too, so a short rail dot can be told apart from a ring around the
+  // ball. An arc records three numbers, a line-to two.
+  let pts = [];
+  const snap = (op) => ops.push({ op, ...st, dash: [...st.dash], pts: pts.map((p) => [...p]) });
   const ctx = {
     get strokeStyle() { return st.strokeStyle; }, set strokeStyle(v) { st.strokeStyle = v; },
     get fillStyle() { return st.fillStyle; }, set fillStyle(v) { st.fillStyle = v; },
@@ -29,11 +33,16 @@ function recorder() {
     restore() { if (stack.length) st = stack.pop(); },
     setLineDash(d) { st.dash = [...d]; },
     translate() {}, rotate() {}, clip() {},
-    beginPath() {}, moveTo() {}, lineTo() {}, rect() {}, roundRect() {}, arc() {},
-    fillRect() { ops.push({ op: 'fill', ...st, dash: [...st.dash] }); },
-    fill() { ops.push({ op: 'fill', ...st, dash: [...st.dash] }); },
-    stroke() { ops.push({ op: 'stroke', ...st, dash: [...st.dash] }); },
-    fillText() { ops.push({ op: 'text', ...st, dash: [...st.dash] }); },
+    beginPath() { pts = []; },
+    moveTo(x, y) { pts.push([x, y]); },
+    lineTo(x, y) { pts.push([x, y]); },
+    rect(x, y) { pts.push([x, y]); },
+    roundRect(x, y) { pts.push([x, y]); },
+    arc(x, y, r) { pts.push([x, y, r]); },
+    fillRect(x, y, w, h) { pts = [[x, y, w, h]]; snap('fill'); },
+    fill() { snap('fill'); },
+    stroke() { snap('stroke'); },
+    fillText() { snap('text'); },
     measureText() { return { width: 10 }; },
   };
   return { ctx, ops };
@@ -70,76 +79,151 @@ function frameWith(type, aTouch, bTouch, ballState = 'normal') {
 
 // An empty field, so the only things drawn are the furniture: the divider, the
 // line, the paddles and the ball. Nothing else can be mistaken for the line.
-function bare(aTouch, bTouch, ballState = 'normal') {
+function bare(aTouch, bTouch, ballState = 'normal', hot = 'a') {
   const input = stubInput(aTouch, bTouch);
   const g = new Game({}, input, {});
   g.resize(400, 800, 1);
   g.startPlayground('mote');
   g.phase = 'play';
   g.ball.state = ballState;
+  g.lastPaddle = hot;
   g.entities.length = 0;
   const { ctx, ops } = recorder();
   render(ctx, g);
   return ops;
 }
 
-const fills = (ops, color) => ops.filter((o) => o.op === 'fill' && o.fillStyle === color);
-const strokes = (ops, color) => ops.filter((o) => o.op === 'stroke' && o.strokeStyle === color);
+const arcs = (ops) => ops.filter((o) => o.pts.length === 1 && o.pts[0].length === 3);
+
+// A rail dot: a two-point stroke exactly RAIL_DOT long. At S = 1 nothing else
+// on the field is that short.
+const spanOf = (o) => Math.hypot(o.pts[1][0] - o.pts[0][0], o.pts[1][1] - o.pts[0][1]);
+const isRailDot = (o) =>
+  o.op === 'stroke' && o.pts.length === 2 && Math.abs(spanOf(o) - RAIL_DOT) < 1e-6;
+const railDots = (ops) => ops.filter(isRailDot);
+
+// The rail and the paddles are furniture and wear orange for their own reasons,
+// so every question about a *piece* has to look past them. A piece's body and
+// rings are arcs; a paddle is a round-rect; a rail dot is a short line.
+const onField = (ops) => ops.filter((o) => !isRailDot(o) && !isPaddleBody(o));
+const isPaddleBody = (o) => o.op === 'fill' && o.pts.length === 1 && o.pts[0].length === 2;
+const fills = (ops, color) => onField(ops).filter((o) => o.op === 'fill' && o.fillStyle === color);
+const strokes = (ops, color) => onField(ops).filter((o) => o.op === 'stroke' && o.strokeStyle === color);
+// The ball and its trail are the only round fills on an empty field.
+const round = (ops, color) => arcs(ops).filter((o) => o.op === 'fill' && o.fillStyle === color);
+
+// Each dot as a comparable shape, and how far it sits from paddle A.
+const dotShape = (o) => `${o.strokeStyle}@${o.globalAlpha.toFixed(4)}`;
+const dotY = (o) => o.pts[0][1];
 
 const DIVIDER = '#1b1e23';
 const TOUCHES = [[true, true], [true, false], [false, true], [false, false]];
 
-// ── the line ────────────────────────────────────────────────────────────────
+// ── the rail ────────────────────────────────────────────────────────────────
 
-test('the line is faded dotted ink, and holding the glass changes nothing', () => {
-  // On an empty field there is nothing else to stroke, so every stroke on
-  // screen belongs to the line or the divider.
+test('the rail is a run of dots, and holding the glass changes none of them', () => {
+  // Who is touching has never been the rail's business, and still is not.
   let seen = null;
   for (const [a, b] of TOUCHES) {
-    const line = strokes(bare(a, b), PALETTE.ink);
-    assert.ok(line.length >= 1, `touches ${a}/${b}`);
-    for (const o of line) assert.ok(o.dash.length > 0, `touches ${a}/${b}: always dotted`);
-
-    // Same colour, same dash, same weight, same alpha, every time.
-    const shape = [...new Set(line.map((o) => `${o.dash.join(',')}|${o.lineWidth}|${o.globalAlpha.toFixed(3)}`))];
-    assert.equal(shape.length, 1, `touches ${a}/${b}: one treatment, got ${shape.join(' / ')}`);
-    if (seen) assert.deepEqual(shape, seen, `touches ${a}/${b} drew a different line`);
+    const dots = railDots(bare(a, b));
+    assert.ok(dots.length > 10, `touches ${a}/${b}: got ${dots.length} dots`);
+    const shape = dots.map(dotShape);
+    if (seen) assert.deepEqual(shape, seen, `touches ${a}/${b} drew a different rail`);
     seen = shape;
   }
 });
 
-test('nothing but ink is ever stroked on an empty field', () => {
+test('the rail runs hot at the end the ball last came off, and cools away from it', () => {
+  // Paddle A is at the bottom, so its dots have the larger y.
+  const byA = railDots(bare(true, true, 'normal', 'a')).sort((p, q) => dotY(q) - dotY(p));
+  const byB = railDots(bare(true, true, 'normal', 'b')).sort((p, q) => dotY(p) - dotY(q));
+
+  for (const [name, dots] of [['a', byA], ['b', byB]]) {
+    // Sorted nearest-to-hot-paddle first: orange at the head, ink at the tail.
+    assert.equal(dots[0].strokeStyle, PALETTE.boost, `${name}: the nearest dot is fully orange`);
+    assert.equal(dots[dots.length - 1].strokeStyle, PALETTE.ink, `${name}: the far end is ink`);
+    assert.ok(dots[0].globalAlpha > dots[dots.length - 1].globalAlpha, `${name}: and brighter`);
+
+    // Never brightens again on the way out.
+    for (let i = 1; i < dots.length; i++) {
+      assert.ok(dots[i].globalAlpha <= dots[i - 1].globalAlpha + 1e-9,
+        `${name}: dot ${i} got brighter again`);
+    }
+    // The heat is a local thing, not a wash over the whole rail.
+    const warm = dots.filter((o) => o.strokeStyle !== PALETTE.ink);
+    assert.ok(warm.length < dots.length / 2, `${name}: ${warm.length}/${dots.length} dots warm`);
+  }
+
+  // The two are mirror images, so neither end is special.
+  assert.deepEqual(byA.map(dotShape), byB.map(dotShape), 'a and b should mirror exactly');
+});
+
+test('only one end of the rail is ever hot', () => {
+  for (const hot of ['a', 'b']) {
+    const dots = railDots(bare(true, true, 'normal', hot)).sort((p, q) => dotY(p) - dotY(q));
+    const warm = dots.map((o, i) => (o.strokeStyle === PALETTE.ink ? -1 : i)).filter((i) => i >= 0);
+    // Every warm dot in one unbroken run, and that run touches one end.
+    assert.ok(warm.length >= 2, `${hot}: something should be warm`);
+    assert.equal(warm[warm.length - 1] - warm[0], warm.length - 1, `${hot}: one unbroken run`);
+    assert.ok(warm[0] === 0 || warm[warm.length - 1] === dots.length - 1,
+      `${hot}: the run should start at an end`);
+  }
+});
+
+test('the heat falls off, reaches zero and stays there', () => {
+  assert.equal(railHeat(0), 1, 'full at the paddle');
+  assert.ok(railHeat(0.1) < 1 && railHeat(0.1) > 0);
+  assert.ok(railHeat(0.2) < railHeat(0.1), 'monotonic');
+  assert.equal(railHeat(0.5), 0, 'gone well before the middle');
+  assert.equal(railHeat(1), 0);
+});
+
+// ── the paddles ─────────────────────────────────────────────────────────────
+
+test('the hot paddle wears the boost colour, and exactly one does', () => {
+  for (const hot of ['a', 'b']) {
+    const ops = bare(true, true, 'normal', hot);
+    // Paddles are the only round-rects on an empty field.
+    const bodies = ops.filter((o) => o.op === 'fill' && o.pts.length === 1 && o.pts[0].length === 2);
+    assert.equal(bodies.length, 2, `${hot}: two paddles`);
+    assert.equal(bodies.filter((o) => o.fillStyle === PALETTE.boost).length, 1, `${hot}: one is orange`);
+    assert.equal(bodies.filter((o) => o.fillStyle === PALETTE.ink).length, 1, `${hot}: the other is ink`);
+  }
+});
+
+test('the hot end is the paddle end, so the rail and the paddle agree', () => {
+  for (const hot of ['a', 'b']) {
+    const ops = bare(true, true, 'normal', hot);
+    const paddle = ops.find((o) => o.op === 'fill' && o.fillStyle === PALETTE.boost && o.pts[0].length === 2);
+    const hottest = railDots(ops).sort((p, q) => q.globalAlpha - p.globalAlpha)[0];
+    const far = railDots(ops).sort((p, q) => p.globalAlpha - q.globalAlpha)[0];
+    assert.ok(Math.abs(hottest.pts[0][1] - paddle.pts[0][1]) < Math.abs(far.pts[0][1] - paddle.pts[0][1]),
+      `${hot}: the brightest dot should be the one nearest the orange paddle`);
+  }
+});
+
+test('nothing is outlined on an empty field, whatever the ball is doing', () => {
+  // The rail is strokes now, so the check is about *arcs*: a halo round the
+  // ball would be one, and there must not be any.
   for (const [a, b] of TOUCHES) {
     for (const state of ['normal', 'boost', 'ghost']) {
-      const colors = new Set(bare(a, b, state)
-        .filter((o) => o.op === 'stroke')
-        .map((o) => o.strokeStyle));
-      colors.delete(DIVIDER);
-      colors.delete(PALETTE.ink);
-      assert.deepEqual([...colors], [], `touches ${a}/${b}, ball ${state}: no halo, no outline`);
+      const outlines = arcs(bare(a, b, state)).filter((o) => o.op === 'stroke');
+      assert.deepEqual(outlines.map((o) => o.strokeStyle), [],
+        `touches ${a}/${b}, ball ${state}: no halo, no outline`);
     }
   }
 });
 
 // ── the ball ────────────────────────────────────────────────────────────────
 
-test('colour alone is the ball state — no ring, no dots, no outline', () => {
-  // Empty field, so the ball is the only thing that could be wearing one.
-  for (const state of ['boost', 'ghost', 'normal']) {
-    const ops = bare(false, false, state);
-    assert.equal(strokes(ops, PALETTE.boost).length, 0, `${state}: no orange outline`);
-    assert.equal(strokes(ops, PALETTE.drift).length, 0, `${state}: no violet outline`);
-  }
-});
-
 test('the ball is filled with the state it is in', () => {
-  assert.ok(fills(bare(true, true, 'boost'), PALETTE.boost).length >= 1, 'boosting: orange');
-  assert.ok(fills(bare(false, false, 'ghost'), PALETTE.drift).length >= 1, 'drifting: violet');
+  assert.ok(round(bare(true, true, 'boost'), PALETTE.boost).length >= 1, 'boosting: orange');
+  assert.ok(round(bare(false, false, 'ghost'), PALETTE.drift).length >= 1, 'drifting: violet');
 
   const plain = bare(true, true, 'normal');
-  assert.equal(fills(plain, PALETTE.boost).length, 0, 'a plain ball is never orange');
-  assert.equal(fills(plain, PALETTE.drift).length, 0, 'nor violet');
-  assert.ok(fills(plain, PALETTE.ink).length >= 1, 'it is ink');
+  assert.equal(round(plain, PALETTE.boost).length, 0, 'a plain ball is never orange');
+  assert.equal(round(plain, PALETTE.drift).length, 0, 'nor violet');
+  assert.ok(round(plain, PALETTE.ink).length >= 1, 'it is ink');
 });
 
 test('a boosting ball leaves an orange trail behind it', () => {
@@ -157,10 +241,10 @@ test('a boosting ball leaves an orange trail behind it', () => {
   const { ctx, ops } = recorder();
   render(ctx, g);
 
-  const hot = fills(ops, PALETTE.boost);
+  const hot = round(ops, PALETTE.boost);
   assert.ok(hot.length >= 6, `expected the orange streak, got ${hot.length}`);
   // And it has to be louder than the ordinary trail, or it is not a streak.
-  const cool = fills(ops, PALETTE.ink).filter((o) => o.globalAlpha < 1);
+  const cool = round(ops, PALETTE.ink).filter((o) => o.globalAlpha < 1);
   assert.ok(cool.length, 'the plain part of the trail was drawn too');
   assert.ok(Math.max(...hot.map((o) => o.globalAlpha)) > Math.max(...cool.map((o) => o.globalAlpha)),
     'the boost streak should be brighter than the plain one');

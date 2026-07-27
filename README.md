@@ -41,8 +41,21 @@ single signal out at speed.
 Orange is not a family, it is a *state*, and it means the same thing wherever it
 turns up: this is what boost is for. Nothing else in the game opens anything.
 
-The line never changes at all. It is a faded dotted rail between the paddles,
-showing where the ball can go and nothing more.
+## The hot end
+
+The paddle the ball last came off turns orange, and the orange bleeds a little
+way down the rail before washing back into ink. Only one end is ever hot,
+because the ball can only have left one of them, and it swaps the instant the
+ball reaches the other paddle.
+
+That is the same orange as everywhere else, doing the same job: **the hot paddle
+is the one whose lift boosts right now.** The ball is running away from that
+player, so theirs is the shove that lands — and the orange trailing off down the
+rail points the way it would go. Whoever is lit is on.
+
+The rail still says nothing about who is holding. It has no halves and no
+opinion about your fingers; the only touch it ever reports is during the launch
+ritual, where each paddle shows its own player's hold.
 
 ## The ball is the readout
 
