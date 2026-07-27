@@ -25,23 +25,20 @@
 //          appears: this is the thing boost is for.
 //
 // The ball is the only thing on the field that changes colour, and colour alone
-// is how it says what it is doing — no rings, no dots, no outline:
+// is how it says what it is doing — no rings, no dots, no outline. There are
+// two states and one of them is "nothing":
 //   orange  boosting. It is flying, and it strips a shield.
-//   violet  drifting, because nobody is holding the glass. Slower, easier to
-//           aim with, and it strips nothing.
-//   ink     neither.
+//   ink     not boosting.
 //
-// The line never changes at all. It is a faded dotted rail between the paddles
-// and it reports nothing.
+// The rail between the paddles never changes except at the hot end — see
+// drawLine. It reports nothing about anybody's fingers.
 
 export const PALETTE = {
   ink: '#e9ecef',
-  // The boosted ball, its trail, and every shield in the game. One colour for
-  // one idea: boost is the only key, and this is what it looks like.
+  // The boosted ball, its trail, the hot paddle, and every shield in the game.
+  // One colour for one idea: boost is the only key, and this is what it looks
+  // like.
   boost: '#ff9633',
-  // The drifting ball. Deliberately not warm — it strips nothing, so it must
-  // not read as a key.
-  drift: '#b98cff',
   // Every obstacle, always.
   hazard: '#ff4a55',
 };
@@ -63,14 +60,12 @@ export const SHIELD = {
 export const isWarm = (c) => c === PALETTE.hazard || c === PALETTE.boost;
 export const isCool = (c) => Object.values(COOL).includes(c);
 
-// The three states the ball can be in, and the colour each one wears. Only one
-// of them is a key: orange strips a shield, and nothing else does.
-export const BALL_STATES = ['boost', 'ghost', 'normal'];
+// The two states the ball can be in. Orange strips a shield; ink is everything
+// else, and there is no third thing.
+export const BALL_STATES = ['boost', 'normal'];
 
 export function ballColorFor(state) {
-  if (state === 'boost') return PALETTE.boost;
-  if (state === 'ghost') return PALETTE.drift;
-  return PALETTE.ink;
+  return state === 'boost' ? PALETTE.boost : PALETTE.ink;
 }
 
 // Does the ball strip a shield in this state? One question, one answer.

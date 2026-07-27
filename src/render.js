@@ -213,8 +213,10 @@ function drawPaddle(ctx, g, P, p, inward, side) {
   const w = g.paddleW, h = g.paddleH, S = g.S;
   // The end the ball last came off wears the boost colour, and it is the honest
   // one to wear it: the ball is running away from this player, so theirs is the
-  // lift that shoves it. Orange still means exactly what it always did.
-  const hot = g.lastPaddle === side;
+  // lift that shoves it. Orange means "your shove is here" — so the moment they
+  // spend it the paddle goes dark and the colour moves onto the flare and the
+  // ball. It lights again when the shove runs out and another one is available.
+  const hot = g.lastPaddle === side && p.boostT <= 0;
   ctx.save();
   ctx.globalAlpha = p.touching ? 1 : 0.5;
   ctx.fillStyle = hot ? ORANGE : INK;
@@ -235,11 +237,11 @@ function drawPaddle(ctx, g, P, p, inward, side) {
     ctx.stroke();
   } else if (g.phase === 'launch') {
     // During the launch ritual each paddle reports its own player's hold, so
-    // neither of them has to read text meant for the other.
-    // Solid means held, dashed means not. No colour needed — violet is spoken
-    // for, and this has nothing to do with breaking rings.
-    // This is the one place a hold is still reported, because during the ritual
-    // it is the only thing either player needs to know. It came off the line.
+    // neither of them has to read text meant for the other. Solid means held,
+    // dashed means not — no colour, because orange is spoken for and this has
+    // nothing to do with shoving anything.
+    //
+    // It is the only place in the game where a touch is reported at all.
     ctx.globalAlpha = p.touching ? 0.9 : 0.3;
     ctx.strokeStyle = p.touching ? INK : DIM;
     ctx.lineWidth = 1.6 * S;

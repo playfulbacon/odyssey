@@ -53,7 +53,6 @@ function stubInput(aTouch, bTouch) {
   return {
     a: p(aTouch), b: p(bTouch),
     boostDir: 0, boostDur: 0.4, enabled: true,
-    get handsOff() { return !this.a.touching && !this.b.touching; },
     update() {}, setBounds() {}, reset() {}, clearTouches() {}, clearEdges() {},
   };
 }
@@ -191,6 +190,36 @@ test('the hot paddle wears the boost colour, and exactly one does', () => {
   }
 });
 
+test('spending the shove puts the paddle out', () => {
+  // Orange on a paddle means "your shove is here". Once it is spent the paddle
+  // goes dark and the colour moves onto the flare and the ball.
+  const input = stubInput(true, true);
+  const g = new Game({}, input, {});
+  g.resize(400, 800, 1);
+  g.startPlayground('mote');
+  g.phase = 'play';
+  g.lastPaddle = 'a';
+  g.entities.length = 0;
+
+  const paddleColors = () => {
+    const { ctx, ops } = recorder();
+    render(ctx, g);
+    return ops.filter(isPaddleBody).map((o) => o.fillStyle);
+  };
+
+  assert.ok(paddleColors().includes(PALETTE.boost), 'lit while the shove is available');
+
+  input.a.boostT = 0.3;                       // A spends it
+  assert.deepEqual(paddleColors(), [PALETTE.ink, PALETTE.ink], 'dark while it runs');
+
+  input.a.boostT = 0;                         // and it runs out
+  assert.ok(paddleColors().includes(PALETTE.boost), 'lit again, another shove available');
+
+  // The other player's shove never puts A's paddle out — only their own does.
+  input.b.boostT = 0.3;
+  assert.ok(paddleColors().includes(PALETTE.boost), 'B shoving leaves A lit');
+});
+
 test('the hot end is the paddle end, so the rail and the paddle agree', () => {
   for (const hot of ['a', 'b']) {
     const ops = bare(true, true, 'normal', hot);
@@ -206,7 +235,7 @@ test('nothing is outlined on an empty field, whatever the ball is doing', () => 
   // The rail is strokes now, so the check is about *arcs*: a halo round the
   // ball would be one, and there must not be any.
   for (const [a, b] of TOUCHES) {
-    for (const state of ['normal', 'boost', 'ghost']) {
+    for (const state of ['normal', 'boost']) {
       const outlines = arcs(bare(a, b, state)).filter((o) => o.op === 'stroke');
       assert.deepEqual(outlines.map((o) => o.strokeStyle), [],
         `touches ${a}/${b}, ball ${state}: no halo, no outline`);
@@ -218,11 +247,9 @@ test('nothing is outlined on an empty field, whatever the ball is doing', () => 
 
 test('the ball is filled with the state it is in', () => {
   assert.ok(round(bare(true, true, 'boost'), PALETTE.boost).length >= 1, 'boosting: orange');
-  assert.ok(round(bare(false, false, 'ghost'), PALETTE.drift).length >= 1, 'drifting: violet');
 
   const plain = bare(true, true, 'normal');
   assert.equal(round(plain, PALETTE.boost).length, 0, 'a plain ball is never orange');
-  assert.equal(round(plain, PALETTE.drift).length, 0, 'nor violet');
   assert.ok(round(plain, PALETTE.ink).length >= 1, 'it is ink');
 });
 

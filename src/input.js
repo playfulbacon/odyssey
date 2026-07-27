@@ -11,13 +11,12 @@
 // Keyboard and mouse fall back to the same model so the prototype is testable
 // on a desktop, with one deliberate split that a finger cannot make. On a
 // keyboard the two halves of "lifting" are separate keys:
-//   direction keys steer, and whether one is down decides whether the line is
-//     ghosted — so stopping both paddles ghosts the line, and that is all it
-//     does. Letting go of a direction key never shoves the ball.
+//   direction keys steer, and keep your side down while you are steering.
+//     Letting go of one never shoves the ball.
 //   the hold key is the finger. It keeps your side down without moving it, and
 //     letting go of it is what boosts.
-// So one person can drive both sides with two hands, park them to ghost, and
-// still fire a boost exactly when they mean to.
+// So one person can drive both sides with two hands and still fire a shove
+// exactly when they mean to, rather than every time they stop moving.
 
 import { CFG } from './config.js';
 
@@ -78,9 +77,6 @@ export class Input {
       p.justReleased = p.justPressed = p.justBoosted = false;
     }
   }
-
-  // Both fingers off the glass — the PHANTOM condition.
-  get handsOff() { return !this.a.touching && !this.b.touching; }
 
   // +1 shoves the ball toward B (up), -1 toward A (down), 0 cancels.
   get boostDir() {
@@ -208,8 +204,7 @@ export class Input {
         else if (p.heldByKey) { p.heldByKey = false; this.boost(p); }
 
         // Either key keeps the side down, but taking the touch away here never
-        // boosts — the ball ghosting when you stop steering is a readout, not
-        // an action.
+        // boosts. Stopping is not a shove — only the hold key's falling edge is.
         const down = dir !== 0 || p.keyHold;
         if (down && !p.touching) this.press(p);
         else if (!down && p.touching) this.release(p, false);
@@ -218,18 +213,6 @@ export class Input {
       }
 
       p.nx = clamp(p.nx, lo, hi);
-    }
-
-    // The drift beats a shove outright. The moment nobody is holding, whatever
-    // was still pushing stops dead — so you cannot shove into the drift, and a
-    // boost only ever happens while your partner keeps their side down.
-    if (this.handsOff) {
-      for (const p of [this.a, this.b]) {
-        // justBoosted goes with it, or a shove that never happened still gets
-        // its sound and its flare.
-        p.boostT = 0;
-        p.justBoosted = false;
-      }
     }
   }
 

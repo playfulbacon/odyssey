@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 
 import { CFG, UPGRADES, upgradeCost, derived, difficulty, emptyUpgrades } from '../src/config.js';
 import {
-  PALETTE, COOL, SHIELD, COLLECTABLES, OBSTACLES,
+  PALETTE, COOL, SHIELD, COLLECTABLES, OBSTACLES, BALL_STATES,
   isWarm, isCool, ballColorFor, stateColorOf,
   isLethal, resolveCollectable, shieldBreaks,
   makeCollectable, makeObstacle, hitTest, updateEntity,
@@ -23,7 +23,7 @@ function stubInput() {
   const p = () => ({ nx: 0.5, touching: false, boostT: 0, pointerId: null });
   return {
     a: p(), b: p(),
-    boostDir: 0, handsOff: false, boostDur: CFG.boost.dur, enabled: false,
+    boostDir: 0, boostDur: CFG.boost.dur, enabled: false,
     update() {}, setBounds() {}, reset() {}, clearTouches() {}, clearEdges() {},
   };
 }
@@ -78,53 +78,42 @@ test('orange is one idea: the shield, and the ball that strips it', () => {
   assert.equal(ballColorFor('boost'), SHIELD.color, 'the ring and the key are the same colour');
 });
 
-test('the drifting ball is not a key, and does not look like one', () => {
-  assert.equal(ballColorFor('ghost'), PALETTE.drift);
-  assert.notEqual(PALETTE.drift, SHIELD.color, 'it must not read as orange');
-  assert.ok(!isWarm(PALETTE.drift) && !isCool(PALETTE.drift), 'and it belongs to no family');
-  assert.equal(shieldBreaks({ boosted: false }), false, 'drifting strips nothing');
-  assert.equal(ballColorFor('normal'), PALETTE.ink, 'and ink strips nothing either');
+test('the ball has two states, and only one of them is a key', () => {
+  assert.deepEqual(BALL_STATES, ['boost', 'normal']);
+  assert.equal(ballColorFor('normal'), PALETTE.ink);
+  assert.equal(shieldBreaks({ boosted: false }), false, 'ink strips nothing');
+  assert.equal(shieldBreaks({ boosted: true }), true, 'orange is the only thing that does');
 });
 
 // ── ball state ──────────────────────────────────────────────────────────────
 //
-// One state at a time, and the drift wins outright — letting go of the second
-// finger cuts off whatever was still pushing, there and then.
+// One question decides it: is something shoving the ball the way it is already
+// going? Nothing else is consulted — least of all whose fingers are down.
 
-test('the drift beats a live shove, whichever way it was pushing', () => {
+test('a lift shoves whether or not anyone else is holding', () => {
   const g = mkGame();
   g.ball.dir = 1;
-  g.input.handsOff = true;
 
-  for (const nd of [0, 1, -1]) {
-    g.input.boostDir = nd;
-    assert.equal(g._ballState(), 'ghost', `boostDir ${nd} must not hold the drift off`);
-  }
-
-  // With someone still holding, the shove behaves as it always did.
-  g.input.handsOff = false;
   g.input.boostDir = 1;
-  assert.equal(g._ballState(), 'boost');
+  assert.equal(g._ballState(), 'boost', 'it is this player\'s turn, so it flies');
   g.input.boostDir = -1;
   assert.equal(g._ballState(), 'normal', 'a lift never drags an incoming ball');
-});
-
-test('the ghost drift needs everyone off the glass', () => {
-  const g = mkGame();
   g.input.boostDir = 0;
-  g.input.handsOff = false;
-  assert.equal(g._ballState(), 'normal');
-  g.input.handsOff = true;
-  assert.equal(g._ballState(), 'ghost');
+  assert.equal(g._ballState(), 'normal', 'and nothing pushing is just nothing');
+
+  // The state is a pure function of the shove and the heading. Touches do not
+  // appear in it at all, so there is nothing a partner can do to veto a shove.
+  g.ball.dir = -1;
+  g.input.boostDir = -1;
+  assert.equal(g._ballState(), 'boost', 'the ball turned round, so the other side is on');
 });
 
-test('a ghosted ball drifts, a boosted one flies, and plain is plain', () => {
+test('a boosted ball flies and everything else runs at its own pace', () => {
   const g = mkGame();
   assert.equal(g._speedMult('normal'), 1);
   assert.equal(g._speedMult('boost'), CFG.boost.mult);
-  assert.equal(g._speedMult('ghost'), CFG.ghost.slow);
-  assert.ok(CFG.ghost.slow < 1, 'ghosting is slower than normal');
-  assert.ok(CFG.boost.mult > 1, 'and boosting is faster');
+  assert.ok(CFG.boost.mult > 1, 'boosting is faster');
+  assert.equal(CFG.ghost, undefined, 'and there is no slow state left');
 });
 
 // ── collectables ────────────────────────────────────────────────────────────
@@ -390,17 +379,13 @@ test('a lift speeds the ball away and never slows it down', () => {
   assert.equal(CFG.boost.slow, undefined, 'a lift never slows anything');
 });
 
-test('two simultaneous lifts cancel, and the drift takes over', () => {
+test('two simultaneous lifts cancel', () => {
   const g = mkGame();
   g.input.a.boostT = 0.3;
   g.input.b.boostT = 0.3;
   g.input.boostDir = (g.input.a.boostT > 0 ? 1 : 0) + (g.input.b.boostT > 0 ? -1 : 0);
   assert.equal(g.input.boostDir, 0, 'the two shoves cancel');
-
-  g.input.handsOff = false;
-  assert.equal(g._ballState(), 'normal', 'someone still holding: just normal pace');
-  g.input.handsOff = true;
-  assert.equal(g._ballState(), 'ghost', 'nobody holding');
+  assert.equal(g._ballState(), 'normal', 'so the ball just keeps its own pace');
 });
 
 test('resolveCollectable is the only contact rule left', () => {

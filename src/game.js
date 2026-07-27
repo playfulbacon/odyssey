@@ -211,24 +211,20 @@ export class Game {
     }
   }
 
-  // What state is the ball in? The drift wins outright: the moment nobody is
-  // holding, the ball drops into it and any shove still running is cut off
-  // there and then. Letting go of the second finger is a brake, not a wait.
+  // What state is the ball in? One question: is something shoving it the way it
+  // is already going? A lift shoves the ball away from the lifter and does
+  // nothing at all to a ball coming the other way, and two lifts cancel.
   //
-  // Otherwise a lift shoves the ball away from the lifter and does nothing at
-  // all to a ball coming the other way. So a boost is a two-person move — it
-  // only lands while your partner is still holding their side down.
+  // Nothing else is consulted. Whose fingers are where does not come into it —
+  // when it is your turn to shove, your lift shoves, full stop.
   _ballState() {
-    if (this.input.handsOff) return 'ghost';
     const nd = this.input.boostDir;
     if (nd !== 0) return Math.sign(this.ball.dir) === nd ? 'boost' : 'normal';
     return 'normal';
   }
 
   _speedMult(state) {
-    if (state === 'boost') return CFG.boost.mult;
-    if (state === 'ghost') return CFG.ghost.slow;
-    return 1;
+    return state === 'boost' ? CFG.boost.mult : 1;
   }
 
   _stepBall(dt) {
@@ -261,7 +257,7 @@ export class Game {
     }
 
     // The trail remembers the state, so a shove leaves a thick orange streak
-    // behind it and a drift leaves a thin violet one.
+    // hanging behind it and an ordinary pass leaves a thin ink one.
     this.ball.trail.push({
       x: this.ball.x, y: this.ball.y,
       c: ballColorFor(this.ball.state),

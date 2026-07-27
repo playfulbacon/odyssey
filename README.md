@@ -21,8 +21,8 @@ constantly.
 **Lift** your finger to shove the ball away from you. For a moment it flies and
 turns orange. A lift does nothing to a ball coming the other way, and if you
 both lift at once the two shoves cancel out. While your finger is off the glass
-your paddle is frozen where you left it. With *both* of you off, the ball slows
-to a violet drift.
+your paddle is frozen where you left it — and nothing else about who is holding
+matters anywhere in the game. When it is your turn to shove, your lift shoves.
 
 ## Reading the field
 
@@ -35,8 +35,7 @@ single signal out at speed.
 | **mint** | a collectable that sits still. |
 | **blue** | a collectable that moves. |
 | **red** | an obstacle. All of them, always — there is one answer and it is "don't". |
-| **orange** | a shield, and the boosted ball that strips it. |
-| **violet** | the drifting ball. Slower, and it strips nothing. |
+| **orange** | a shield, the boosted ball that strips it, and the paddle whose shove is up next. |
 
 Orange is not a family, it is a *state*, and it means the same thing wherever it
 turns up: this is what boost is for. Nothing else in the game opens anything.
@@ -53,6 +52,11 @@ is the one whose lift boosts right now.** The ball is running away from that
 player, so theirs is the shove that lands — and the orange trailing off down the
 rail points the way it would go. Whoever is lit is on.
 
+**Spend it and the paddle goes dark.** The moment you lift, the colour leaves
+the paddle and moves onto the flare and the ball; it comes back when the shove
+runs out and another one is available. So orange on a paddle always means the
+same thing: your shove is here, and you have not used it yet.
+
 The rail still says nothing about who is holding. It has no halves and no
 opinion about your fingers; the only touch it ever reports is during the launch
 ritual, where each paddle shows its own player's hold.
@@ -60,22 +64,16 @@ ritual, where each paddle shows its own player's hold.
 ## The ball is the readout
 
 **Colour alone says what the ball is doing** — no ring, no dots, no outline,
-just the fill:
+just the fill. There are two states, and one of them is "nothing":
 
 | | | |
 |---|---|---|
 | **orange** | boosting | flying, trailing orange, and strips a shield |
-| **violet** | drifting | nobody holding, so it has slowed down; strips nothing |
-| **ink** | neither | strips nothing |
+| **ink** | not boosting | strips nothing |
 
-One state at a time, and **the drift wins outright**. The moment the second
-finger comes off, the ball drops into it and whatever was still pushing is cut
-off there and then — letting go together is a brake either of you can pull, not
-a wait.
-
-Which makes a boost a two-person move: it only lands while your partner keeps
-their side down. Lift when you are already the only one holding and you get the
-drift, not a shove.
+Whether the ball is boosting depends on exactly two things: is a shove running,
+and is it pushing the way the ball is already going. Nothing else is consulted —
+not whose fingers are down, not the other player's, not anything.
 
 `SHIELD.color` and `ballColorFor('boost')` are the same value, and
 `resolveCollectable()` asks `shieldBreaks()` the one question there is, so the
@@ -98,7 +96,7 @@ a ring and simply does not count.
 | **VAULT** | 3 | 900 | The biggest payout on the field, and the longest to stand still over. |
 
 **Obstacles** are pure hazard. They wear nothing, pay nothing, and cost a life
-on *any* contact — boosted, drifting or plain.
+on *any* contact, boosted or not.
 
 | | pays | behaviour |
 |---|---|---|
@@ -176,12 +174,10 @@ touch *and* shoves the ball — and on a keyboard those are split across two key
 | Bottom player | <kbd>A</kbd> <kbd>D</kbd> | <kbd>S</kbd> |
 | Top player | <kbd>J</kbd> <kbd>L</kbd> | <kbd>K</kbd> |
 
-**Steering keeps your side down.** Park both paddles and the ball drifts — and
-that is all parking does; letting go of a direction key never shoves the ball.
-**The shove is a tap of the boost key**, which also holds your side down without
-moving it. So you can line a vault up, park both sides to let the drift bring
-the ball in slowly, and shove only when you mean to — remembering that the shove
-needs the *other* side held down, so put one back before you tap.
+**Steering keeps your side down, and stopping is not a shove** — letting go of a
+direction key never boosts the ball. **The shove is a tap of the boost key**,
+which also holds your side down without moving it. So you can line a vault up,
+stop, and shove only when you mean to.
 
 The mouse works as a single player and does both jobs at once, like a finger.
 
@@ -211,8 +207,8 @@ test/           rules tests (node --test)
 ### Tuning
 
 `src/config.js` is the whole dial board — ball pace, boost strength and
-duration, drift slow-down, launch hold time, run targets, upgrade prices, and
-the per-run difficulty curve. `src/entities.js` holds the palette and each
+duration, launch hold time, run targets, upgrade prices, and the per-run
+difficulty curve. `src/entities.js` holds the palette and each
 piece's own numbers (rings, payout, speed) alongside the blurb the playground
 shows. An obstacle's colour is not written down per piece: they are all assigned
 `PALETTE.hazard` in a loop, so a new obstacle cannot be given a hue that
