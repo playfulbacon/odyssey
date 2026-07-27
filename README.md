@@ -68,9 +68,14 @@ just the fill:
 | **violet** | drifting | nobody holding, so it has slowed down; strips nothing |
 | **ink** | neither | strips nothing |
 
-One state at a time, and **a shove already under way always finishes first** —
-letting go of the second finger never snatches a boost away mid-flight. The
-drift only starts once nothing is pushing.
+One state at a time, and **the drift wins outright**. The moment the second
+finger comes off, the ball drops into it and whatever was still pushing is cut
+off there and then — letting go together is a brake either of you can pull, not
+a wait.
+
+Which makes a boost a two-person move: it only lands while your partner keeps
+their side down. Lift when you are already the only one holding and you get the
+drift, not a shove.
 
 `SHIELD.color` and `ballColorFor('boost')` are the same value, and
 `resolveCollectable()` asks `shieldBreaks()` the one question there is, so the
@@ -174,8 +179,9 @@ touch *and* shoves the ball — and on a keyboard those are split across two key
 **Steering keeps your side down.** Park both paddles and the ball drifts — and
 that is all parking does; letting go of a direction key never shoves the ball.
 **The shove is a tap of the boost key**, which also holds your side down without
-moving it. So you can line a vault up, stop to let the drift bring the ball in
-slowly, and shove only when you mean to.
+moving it. So you can line a vault up, park both sides to let the drift bring
+the ball in slowly, and shove only when you mean to — remembering that the shove
+needs the *other* side held down, so put one back before you tap.
 
 The mouse works as a single player and does both jobs at once, like a finger.
 

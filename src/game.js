@@ -211,17 +211,18 @@ export class Game {
     }
   }
 
-  // What state is the ball in? A shove already under way always wins: the ball
-  // finishes its boost before it will drift, so letting go of the second finger
-  // never snatches a shove away mid-flight.
+  // What state is the ball in? The drift wins outright: the moment nobody is
+  // holding, the ball drops into it and any shove still running is cut off
+  // there and then. Letting go of the second finger is a brake, not a wait.
   //
-  // A lift shoves the ball away from the lifter and does nothing at all to a
-  // ball coming the other way. Two lifts cancel, which is also what lets the
-  // ghost drift start the moment both players are off with nothing left to run.
+  // Otherwise a lift shoves the ball away from the lifter and does nothing at
+  // all to a ball coming the other way. So a boost is a two-person move — it
+  // only lands while your partner is still holding their side down.
   _ballState() {
+    if (this.input.handsOff) return 'ghost';
     const nd = this.input.boostDir;
     if (nd !== 0) return Math.sign(this.ball.dir) === nd ? 'boost' : 'normal';
-    return this.input.handsOff ? 'ghost' : 'normal';
+    return 'normal';
   }
 
   _speedMult(state) {

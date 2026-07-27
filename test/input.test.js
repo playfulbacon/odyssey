@@ -55,6 +55,7 @@ test('letting go of a direction key ghosts the side but never shoves the ball', 
 
 test('letting go of the hold key is what shoves', () => {
   const i = mkInput();
+  i.b.keyHold = true;              // the partner keeps their side down throughout
   i.a.keyHold = true;
   step(i);
   assert.equal(i.a.touching, true);
@@ -101,6 +102,38 @@ test('a real finger still does both at once', () => {
   i.release(i.a);
   assert.equal(i.a.touching, false);
   assert.ok(i.a.boostT > 0, 'lifting a finger ends the touch and shoves, as it always did');
+});
+
+test('the second finger coming off cuts the shove dead', () => {
+  const i = mkInput();
+  i.a.keyHold = true; i.b.keyHold = true;
+  step(i);
+
+  // A shoves while B keeps their side down: a normal boost, still running.
+  i.a.keyHold = false;
+  step(i);
+  assert.ok(i.a.boostT > 0, 'the shove started');
+  assert.equal(i.handsOff, false, 'because B is still holding');
+  assert.equal(i.boostDir, 1, 'and it is pushing');
+
+  // B lets go too. The shove had plenty of time left, and it stops anyway.
+  i.b.keyHold = false;
+  step(i);
+  assert.equal(i.handsOff, true);
+  assert.equal(i.a.boostT, 0, 'the shove was cut off, not left to run down');
+  assert.equal(i.boostDir, 0, 'so nothing is pushing at all');
+});
+
+test('you cannot shove into the drift — a boost needs your partner holding', () => {
+  const i = mkInput();
+  i.a.keyHold = true;              // B never touches the glass
+  step(i);
+  assert.equal(i.handsOff, false);
+
+  i.a.keyHold = false;
+  step(i);
+  assert.equal(i.handsOff, true, 'the last finger came off');
+  assert.equal(i.a.boostT, 0, 'so the lift shoves nothing');
 });
 
 test('a paddle stays inside the rails however long it is driven', () => {

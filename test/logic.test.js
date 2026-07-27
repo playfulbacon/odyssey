@@ -88,25 +88,25 @@ test('the drifting ball is not a key, and does not look like one', () => {
 
 // ── ball state ──────────────────────────────────────────────────────────────
 //
-// One state at a time, and a shove already under way always wins — the ball
-// finishes its boost before it will ever drift.
+// One state at a time, and the drift wins outright — letting go of the second
+// finger cuts off whatever was still pushing, there and then.
 
-test('a live shove beats the drift, so a boost always finishes', () => {
+test('the drift beats a live shove, whichever way it was pushing', () => {
   const g = mkGame();
   g.ball.dir = 1;
-
   g.input.handsOff = true;
-  g.input.boostDir = 0;
-  assert.equal(g._ballState(), 'ghost', 'nothing pushing and nobody holding');
 
-  // Both hands off, but one player's shove is still running in the ball's
-  // direction: it keeps boosting until that dies.
+  for (const nd of [0, 1, -1]) {
+    g.input.boostDir = nd;
+    assert.equal(g._ballState(), 'ghost', `boostDir ${nd} must not hold the drift off`);
+  }
+
+  // With someone still holding, the shove behaves as it always did.
+  g.input.handsOff = false;
   g.input.boostDir = 1;
   assert.equal(g._ballState(), 'boost');
-
-  // Still running, pushing the other way: not a boost, but not a drift either.
   g.input.boostDir = -1;
-  assert.equal(g._ballState(), 'normal', 'the shove has to finish first');
+  assert.equal(g._ballState(), 'normal', 'a lift never drags an incoming ball');
 });
 
 test('the ghost drift needs everyone off the glass', () => {
@@ -400,7 +400,7 @@ test('two simultaneous lifts cancel, and the drift takes over', () => {
   g.input.handsOff = false;
   assert.equal(g._ballState(), 'normal', 'someone still holding: just normal pace');
   g.input.handsOff = true;
-  assert.equal(g._ballState(), 'ghost', 'nobody holding and nothing left to run');
+  assert.equal(g._ballState(), 'ghost', 'nobody holding');
 });
 
 test('resolveCollectable is the only contact rule left', () => {

@@ -28,9 +28,9 @@ export const CFG = {
     mult: 2.35,   // ball moving away from the lifter; a lift never slows it down
   },
 
-  // The ball drifts while nobody is holding — but only once any shove already
-  // under way has finished. It strips nothing while drifting; it is just slow
-  // enough to line the next shot up with.
+  // The ball drifts the instant nobody is holding, cutting off any shove still
+  // running. It strips nothing while drifting; it is just slow enough to line
+  // the next shot up with — a brake, on demand, that either player can pull.
   ghost: { slow: 0.6 },
 
   launch: {

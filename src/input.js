@@ -219,6 +219,18 @@ export class Input {
 
       p.nx = clamp(p.nx, lo, hi);
     }
+
+    // The drift beats a shove outright. The moment nobody is holding, whatever
+    // was still pushing stops dead — so you cannot shove into the drift, and a
+    // boost only ever happens while your partner keeps their side down.
+    if (this.handsOff) {
+      for (const p of [this.a, this.b]) {
+        // justBoosted goes with it, or a shove that never happened still gets
+        // its sound and its flare.
+        p.boostT = 0;
+        p.justBoosted = false;
+      }
+    }
   }
 
   clearEdges() {
