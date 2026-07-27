@@ -60,8 +60,13 @@ obstacle: only a boosted pass strips them, *ball power* rings at a time. An
 unboosted ball goes straight through and does nothing. Once the last ring is
 gone the core fills in — touch it again, boosted or not, to bank it.
 
+The **MOTE** is the exception: no rings at all, just touch it. Run 1 is nothing
+but motes, so the first run asks only that you can steer the line; the ring rule
+arrives with the ORB on run 2.
+
 | | rings | pays | behaviour |
 |---|---|---|---|
+| **MOTE** | — | 60 | No rings. Touch it and it is banked. The plainest thing in the game, and it never grows rings however deep the run gets. |
 | **ORB** | 1 | 100 | Static. The plain one. |
 | **DRIFTER** | 2 | 190 | Wanders, bounces off the walls; a stub shows where it came from. |
 | **SPLITTER** | 2 | 110 | A double O. Bursts into three already-open shards when cracked. |
@@ -106,14 +111,15 @@ which brings a bigger target and a nastier field. Miss the target
 or burn every life and the game is over. Score carries across runs, so the
 question is how deep you can get.
 
-The threat ramps piece by piece: `SLAB` from run 1, then `BRITTLE`, `PULSAR`,
-`PHANTOM` and `ROTOR` by run 5.
+Both sides ramp a piece at a time. Collectables: `MOTE`, then `ORB`, `DRIFTER`,
+`SPLITTER`, `RUNNER` by run 5. Obstacles: `SLAB`, then `BRITTLE`, `PULSAR`,
+`PHANTOM`, `ROTOR` on the same schedule.
 
 ## Playground
 
 A no-clock, no-target, endless-lives sandbox with one page per collectable and
 per obstacle, so a mechanic can be learned (or re-tuned) in isolation. Obstacle
-pages also spawn plain orbs so there is something to weave toward.
+pages also spawn ringless motes, so the practice loop is pure dodging.
 
 ## Running it
 

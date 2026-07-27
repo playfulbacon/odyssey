@@ -46,6 +46,7 @@ export const GATES = {
 
 // Cool. Identity only.
 export const COOL = {
+  mint: '#8ef0d0',
   teal: '#4ee0b0',
   blue: '#48a8f0',
   green: '#8adc4a',
@@ -68,6 +69,12 @@ export function lineColorFor(touching) {
 }
 
 export const COLLECTABLES = {
+  mote: {
+    key: 'mote', cls: 'col', label: 'MOTE', color: COOL.mint,
+    value: 60, shield: 0, shieldGrows: false, r: 10,
+    blurb: 'No rings at all. Steer the line across it and it is banked — no boost, no timing, nothing to break. It never grows rings, however deep the run gets.',
+    hint: 'The first thing you meet. All it asks is that you can put the line where you want it.',
+  },
   orb: {
     key: 'orb', cls: 'col', label: 'ORB', color: COOL.teal,
     value: 100, shield: 1, r: 13,
@@ -94,7 +101,7 @@ export const COLLECTABLES = {
   },
   shard: {
     key: 'shard', cls: 'col', label: 'SHARD', color: COOL.green, hidden: true,
-    value: 80, shield: 0, r: 6,
+    value: 80, shield: 0, shieldGrows: false, r: 6,
   },
 };
 
@@ -171,7 +178,7 @@ function base(def, x, y, S) {
 export function makeCollectable(type, x, y, S, diff, rng = Math.random) {
   const def = COLLECTABLES[type];
   const e = base(def, x, y, S);
-  e.shieldMax = Math.max(0, (def.shield || 0) + (type === 'shard' ? 0 : diff.shieldBonus));
+  e.shieldMax = Math.max(0, (def.shield || 0) + (def.shieldGrows === false ? 0 : diff.shieldBonus));
   e.shield = e.shieldMax;
   e.exposed = e.shield <= 0;
   e.value = Math.round(def.value * diff.valueScale);

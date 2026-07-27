@@ -97,6 +97,38 @@ test('a pulsar never changes hue, only its window', () => {
 
 // ── rings ───────────────────────────────────────────────────────────────────
 
+test('the mote has no rings and is banked by any touch at all', () => {
+  for (const run of [1, 5, 12]) {
+    const e = makeCollectable('mote', 0, 0, 1, difficulty(run));
+    assert.equal(e.shieldMax, 0, `run ${run}: the plain one must stay plain`);
+    assert.equal(e.exposed, true, 'open from the moment it lands');
+    for (const w of WORLDS) {
+      assert.equal(resolveCollectable(e, w), 'collect', `run ${run}, ${w.name}`);
+    }
+  }
+  // Everything else does grow rings as the runs go on.
+  assert.ok(makeCollectable('orb', 0, 0, 1, difficulty(12)).shieldMax > COLLECTABLES.orb.shield);
+});
+
+test('banking a mote needs no boost end to end', () => {
+  const g = mkGame();
+  const e = makeCollectable('mote', 200, 400, 1, D1);
+  e.spawnT = 0;
+  g.entities.push(e);
+  g.ball.boosted = false;
+  g._collide(e.x, e.y);
+  assert.equal(e.dead, true);
+  assert.equal(g.score, e.value);
+});
+
+test('run 1 is motes alone, so the first run never mentions boost', () => {
+  assert.deepEqual(difficulty(1).collectPool, ['mote']);
+  assert.ok(difficulty(2).collectPool.includes('orb'), 'the ring rule arrives on run 2');
+  for (let n = 1; n < 12; n++) {
+    assert.ok(difficulty(n + 1).collectPool.length >= difficulty(n).collectPool.length);
+  }
+});
+
 test('a ring only comes off a boosted ball, on a collectable or an obstacle', () => {
   for (const w of WORLDS) {
     const orb = makeCollectable('orb', 0, 0, 1, D1);
@@ -413,7 +445,8 @@ test('targets and threat both climb every run', () => {
     assert.ok(difficulty(n + 1).valueScale > difficulty(n).valueScale);
   }
   assert.deepEqual(difficulty(1).obstaclePool, ['slab']);
-  assert.equal(difficulty(5).obstaclePool.length, 5, 'everything is in play by run 5');
+  assert.equal(difficulty(5).obstaclePool.length, 5, 'every obstacle is in play by run 5');
+  assert.equal(difficulty(5).collectPool.length, 5, 'and every collectable');
 });
 
 test('paddle width is not for sale, because it is not a lever', () => {

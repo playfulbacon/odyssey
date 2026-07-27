@@ -96,10 +96,13 @@ export function difficulty(run) {
   const r = Math.max(1, run);
   const k = r - 1;
 
-  const collectPool = ['orb'];
-  if (r >= 2) collectPool.push('drifter');
-  if (r >= 3) collectPool.push('splitter');
-  if (r >= 4) collectPool.push('runner');
+  // Run 1 is the MOTE alone: no rings, so the first run asks only that you can
+  // steer the line. The ring rule arrives with the ORB on run 2.
+  const collectPool = ['mote'];
+  if (r >= 2) collectPool.push('orb');
+  if (r >= 3) collectPool.push('drifter');
+  if (r >= 4) collectPool.push('splitter');
+  if (r >= 5) collectPool.push('runner');
 
   const obstaclePool = ['slab'];
   if (r >= 2) obstaclePool.push('brittle');

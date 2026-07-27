@@ -277,7 +277,9 @@ function drawCollectable(ctx, g, e) {
 
   segRing(ctx, e.x, e.y, e.r, e.shieldMax, e.shield, S, 2.5);
 
-  const cr = e.r * 0.44;
+  // With no ring competing for the space, a ringless piece can afford a
+  // bigger core — otherwise a MOTE reads as a speck.
+  const cr = e.r * (e.shieldMax ? 0.44 : 0.62);
   ctx.strokeStyle = e.color;
   ctx.fillStyle = e.color;
   ctx.lineWidth = 1.5 * S;

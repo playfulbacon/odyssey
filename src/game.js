@@ -67,7 +67,9 @@ export class Game {
     this.diff.obstacleGap = 2.4;
     this.diff.obstacleTtl = 22;
     this.diff.obstaclePool = this.pgIsObstacle ? [type] : [];
-    this.diff.collectPool = this.pgIsObstacle ? ['orb'] : [type];
+    // Obstacle pages get MOTEs as filler: ringless, so the practice loop is
+    // pure dodging with nothing else to think about.
+    this.diff.collectPool = this.pgIsObstacle ? ['mote'] : [type];
     this.power = CFG.base.power;
     this.livesMax = Infinity;
     this.lives = Infinity;
