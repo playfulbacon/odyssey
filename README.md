@@ -193,9 +193,12 @@ meta-game, so values can be poked from the console mid-play.
 
 ## Known rough edges
 
-- The menus, shop and results screens read one way up. The in-game HUD is a
-  single strip stood on its side against the left edge, opposite the pause
-  button, so it is square to neither player rather than upside down for one.
+- The menus, shop and results screens read one way up. The in-game HUD and the
+  pause button are both strips stood on their sides against opposite edges, so
+  they are square to neither player rather than upside down for one — and they
+  face the same way, so turning the phone into landscape lands both of them
+  upright at once. Rotation-locked, that gives you a playable landscape layout
+  with a thumb at each end.
   During the launch ritual each paddle also reports its own player's hold, so
   neither of you has to read a prompt meant for the other.
 - Balance is a first pass. Run 1 is deliberately gentle; the later curve has had

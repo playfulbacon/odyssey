@@ -185,20 +185,31 @@ kbd {
   cursor: pointer;
 }
 
-/* Stood on its side against the right edge, mirroring the HUD strip on the
-   left, with the lettering facing away from the middle of the screen. Both
-   pieces of furniture are side-on to both players rather than upright for
-   one of them — and turning the phone lands them the right way up. */
+/* Stood on its side against the right edge, alongside the HUD strip on the
+   left. Rotated anticlockwise so the tops of the letters face the right-hand
+   edge — away from the middle of the screen — and it reads bottom-to-top, the
+   same way up as the HUD. Turn the phone and the two land upright together.
+
+   --len runs along the lettering and --thick across it; the negative `right`
+   is what the box gives back once rotation swaps those two, so the rotated
+   footprint still sits 8px off the edge. */
 .btn.edge {
+  --len: 78px;
+  --thick: 34px;
   position: absolute;
   top: 50%;
-  right: 8px;
-  transform: translateY(-50%);
+  right: calc((var(--thick) - var(--len)) / 2 + 8px);
+  width: var(--len);
+  height: var(--thick);
+  transform: translateY(-50%) rotate(-90deg);
   z-index: 8;
-  writing-mode: vertical-rl;
-  padding: 13px 11px 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   font-size: 11px;
   letter-spacing: .22em;
+  text-indent: .22em;   /* soak up the trailing letter-space so it centres */
   color: var(--dim);
 }
 .btn.edge[hidden] { display: none; }
