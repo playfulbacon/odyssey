@@ -1,16 +1,18 @@
 // All drawing. Minimal palette, thin strokes, no textures.
 //
 // The visual language is documented at the top of entities.js. In short:
-//   O = collectable, X = obstacle;
-//   INK = no condition, FORCE = needs the boosted ball (and marks every ring
-//   the ball can break), GHOST = needs both fingers off, HAZARD = lethal now.
-// The ball wears whichever of those states it is in, so "match the colour" is
-// the only rule a player has to hold in their head.
+//   O and a cool hue = collectable; X and a warm hue = obstacle.
+//   The warm hue names the gate, so two obstacles that open the same way look
+//   the same. The cool hue is identity only.
+//   Violet is neither family: it is the boosted ball and every breakable ring.
+//   A half of the line you are not holding turns the PHANTOM's gold.
 
 import { CFG } from './config.js';
-import { PALETTE, stateColorOf, ballColorFor } from './entities.js';
+import { PALETTE, GATES, stateColorOf, ballColorFor, lineColorFor } from './entities.js';
 
-const { ink: INK, force: FORCE, ghost: GHOST, hazard: HAZARD } = PALETTE;
+const INK = PALETTE.ink;
+const RING = PALETTE.ring;
+const RED = GATES.never.color;
 const DIM = '#6d737b';
 const BG = '#08090b';
 const TAU = Math.PI * 2;
@@ -53,16 +55,19 @@ function pathX(ctx, x, y, r) {
   ctx.moveTo(x + k, y - k); ctx.lineTo(x - k, y + k);
 }
 
-// A ring of segments, one per point of whatever is left. Always FORCE, because
-// a segmented ring means exactly one thing: the ball can break this.
+// A ring of segments, one per point of whatever is left. Always violet, on a
+// collectable and on an obstacle alike, because a segmented ring means exactly
+// one thing anywhere in the game: a boosted ball takes this off.
 function segRing(ctx, x, y, r, total, left, S, width = 2.5) {
   if (!total) return;
   const baseA = ctx.globalAlpha;
   const gap = total > 1 ? 0.18 : 0;
   const span = TAU / total - gap;
+  // save/restore, or the violet leaks onto the warm body drawn after it.
+  ctx.save();
   ctx.lineWidth = width * S;
   ctx.lineCap = 'butt';
-  ctx.strokeStyle = FORCE;
+  ctx.strokeStyle = RING;
   for (let i = 0; i < total; i++) {
     const a0 = -Math.PI / 2 + i * (TAU / total) + gap / 2;
     ctx.globalAlpha = baseA * (i < left ? 0.95 : 0.12);
@@ -70,7 +75,7 @@ function segRing(ctx, x, y, r, total, left, S, width = 2.5) {
     ctx.arc(x, y, r, a0, a0 + span);
     ctx.stroke();
   }
-  ctx.globalAlpha = baseA;
+  ctx.restore();
 }
 
 // ── entry point ─────────────────────────────────────────────────────────────
@@ -115,13 +120,12 @@ export function render(ctx, g) {
   }
 }
 
-// What state is the ball in, and therefore what can it get through? Same call
-// the simulation makes, so the ball can never be drawn a colour it does not
-// actually open.
+// The ball reports one thing: whether it can currently break a ring. "Nobody is
+// holding" lives on the line instead, where the two halves can report it
+// separately.
 function ballKeys(g) {
   const boosted = g.ball.boosted && g.phase === 'play';
-  const handsOff = g.input.handsOff && g.phase === 'play';
-  return { boosted, handsOff, color: ballColorFor({ boosted, handsOff }) };
+  return { boosted, color: ballColorFor({ boosted }) };
 }
 
 // ── field furniture ─────────────────────────────────────────────────────────
@@ -139,14 +143,16 @@ function drawTerritory(ctx, g) {
 }
 
 // Two halves, so each player can see at a glance whether their own finger is
-// down. A released half fades to GHOST — the state it is moving the ball toward.
+// down. A released half turns the PHANTOM's gold; when both halves are gold the
+// phantom is open, and the line says so from end to end.
 function drawLine(ctx, g, A, B) {
   const M = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
+  const open = g.input.handsOff;
   const seg = (P, Q, on) => {
     ctx.save();
-    ctx.globalAlpha = on ? 0.92 : 0.3;
-    ctx.strokeStyle = on ? INK : GHOST;
-    ctx.lineWidth = (on ? 1.4 : 1.1) * g.S;
+    ctx.globalAlpha = on ? 0.92 : open ? 0.95 : 0.42;
+    ctx.strokeStyle = lineColorFor(on);
+    ctx.lineWidth = (on ? 1.4 : open ? 1.7 : 1.1) * g.S;
     ctx.beginPath();
     ctx.moveTo(P.x, P.y); ctx.lineTo(Q.x, Q.y);
     ctx.stroke();
@@ -159,18 +165,18 @@ function drawLine(ctx, g, A, B) {
 function drawPaddle(ctx, g, P, p, inward) {
   const w = g.paddleW, h = g.paddleH, S = g.S;
   ctx.save();
-  ctx.globalAlpha = p.touching ? 1 : 0.4;
-  ctx.fillStyle = p.touching ? INK : GHOST;
+  ctx.globalAlpha = p.touching ? 1 : 0.5;
+  ctx.fillStyle = lineColorFor(p.touching);
   roundRect(ctx, P.x - w / 2, P.y - h / 2, w, h, CFG.paddle.round * S);
   ctx.fill();
 
   const y = P.y - inward * (h / 2 + 5 * S);
 
-  // A FORCE flare while the lift is still shoving.
+  // A violet flare while the lift is still shoving — the ball is violet too.
   if (p.boostT > 0) {
     const k = p.boostT / Math.max(0.001, g.input.boostDur);
     ctx.globalAlpha = k * 0.85;
-    ctx.strokeStyle = FORCE;
+    ctx.strokeStyle = RING;
     ctx.lineWidth = 1.6 * S;
     ctx.beginPath();
     ctx.moveTo(P.x - (w / 2) * k, y);
@@ -179,8 +185,10 @@ function drawPaddle(ctx, g, P, p, inward) {
   } else if (g.phase === 'launch') {
     // During the launch ritual each paddle reports its own player's hold, so
     // neither of them has to read text meant for the other.
+    // Solid means held, dashed means not. No colour needed — violet is spoken
+    // for, and this has nothing to do with breaking rings.
     ctx.globalAlpha = p.touching ? 0.9 : 0.3;
-    ctx.strokeStyle = p.touching ? FORCE : DIM;
+    ctx.strokeStyle = p.touching ? INK : DIM;
     ctx.lineWidth = 1.6 * S;
     ctx.setLineDash(p.touching ? [] : [3 * S, 4 * S]);
     ctx.beginPath();
@@ -219,16 +227,12 @@ function drawBall(ctx, g, A, B) {
   pathO(ctx, x, y, r);
   ctx.fill();
 
-  // A halo in the ball's own colour means "charged" — never a second colour,
-  // because the ball only ever holds one key at a time.
-  if (key.boosted || key.handsOff) {
-    ctx.globalAlpha = 0.58;
-    ctx.strokeStyle = key.color;
+  if (key.boosted) {
+    ctx.globalAlpha = 0.6;
+    ctx.strokeStyle = RING;
     ctx.lineWidth = 1.3 * S;
-    ctx.setLineDash(key.handsOff && !key.boosted ? [2.5 * S, 3 * S] : []);
     pathO(ctx, x, y, r + 4 * S);
     ctx.stroke();
-    ctx.setLineDash([]);
   }
   ctx.restore();
 }
@@ -274,22 +278,20 @@ function drawCollectable(ctx, g, e) {
   segRing(ctx, e.x, e.y, e.r, e.shieldMax, e.shield, S, 2.5);
 
   const cr = e.r * 0.44;
-  ctx.strokeStyle = INK;
-  ctx.fillStyle = INK;
+  ctx.strokeStyle = e.color;
+  ctx.fillStyle = e.color;
   ctx.lineWidth = 1.5 * S;
 
   if (e.exposed) {
-    // Open. Filled O, with a FORCE pulse going out — come and take it.
+    // Open. Filled O pulsing in its own colour — come and take it.
     const pulse = 1 + Math.sin(e.age * 9) * 0.12;
     pathO(ctx, e.x, e.y, cr * pulse);
     ctx.fill();
     ctx.globalAlpha = baseA * 0.4;
-    ctx.strokeStyle = FORCE;
     ctx.lineWidth = 1.2 * S;
     pathO(ctx, e.x, e.y, e.r * (0.6 + ((e.age * 1.6) % 1) * 0.6));
     ctx.stroke();
     ctx.globalAlpha = baseA;
-    ctx.strokeStyle = INK;
   } else {
     pathO(ctx, e.x, e.y, cr);
     ctx.stroke();
@@ -307,8 +309,7 @@ function drawCollectable(ctx, g, e) {
   // The runner's patience, draining away.
   if (e.type === 'runner' && e.ttl !== Infinity) {
     const k = Math.max(0, Math.min(1, e.ttl / 9));
-    ctx.globalAlpha = baseA * 0.4;
-    ctx.strokeStyle = INK;
+    ctx.globalAlpha = baseA * 0.45;
     ctx.lineWidth = 1.2 * S;
     ctx.beginPath();
     ctx.arc(e.x, e.y, e.r * 1.5, -Math.PI / 2, -Math.PI / 2 + TAU * k);
@@ -359,51 +360,51 @@ function drawObstacle(ctx, g, e) {
     }
 
     case 'brittle': {
-      segRing(ctx, e.x, e.y, e.r, e.hpMax, e.hp, S, 2.7);
-      ctx.globalAlpha = baseA * 0.14;
-      pathO(ctx, e.x, e.y, e.r * 0.72); ctx.fill();
+      segRing(ctx, e.x, e.y, e.r + 3 * S, e.hpMax, e.hp, S, 2.7);
+      ctx.globalAlpha = baseA * 0.18;
+      pathO(ctx, e.x, e.y, e.r * 0.78); ctx.fill();
       ctx.globalAlpha = baseA;
-      pathX(ctx, e.x, e.y, e.r * 0.46); ctx.stroke();
+      ctx.lineWidth = 2 * S;
+      pathX(ctx, e.x, e.y, e.r * 0.6); ctx.stroke();
       break;
     }
 
     case 'phantom': {
       const open = g.input.handsOff && g.phase === 'play';
-      segRing(ctx, e.x, e.y, e.r, e.hpMax, e.hp, S, 2.7);
-      ctx.globalAlpha = baseA * (open ? 0.26 : 0.07);
-      pathO(ctx, e.x, e.y, e.r * 0.7); ctx.fill();
+      segRing(ctx, e.x, e.y, e.r + 3 * S, e.hpMax, e.hp, S, 2.7);
+      ctx.globalAlpha = baseA * (open ? 0.28 : 0.08);
+      pathO(ctx, e.x, e.y, e.r * 0.78); ctx.fill();
       // Dashed while it is out of reach, solid the moment you both let go.
-      ctx.globalAlpha = baseA * (open ? 1 : 0.45);
+      ctx.globalAlpha = baseA * (open ? 1 : 0.5);
       ctx.setLineDash(open ? [] : [3 * S, 4 * S]);
-      ctx.lineWidth = 1.4 * S;
-      pathO(ctx, e.x, e.y, e.r * 0.7); ctx.stroke();
+      ctx.lineWidth = 1.5 * S;
+      pathO(ctx, e.x, e.y, e.r * 0.78); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.globalAlpha = baseA * (open ? 1 : 0.55);
-      ctx.lineWidth = 1.6 * S;
-      pathX(ctx, e.x, e.y, e.r * 0.4); ctx.stroke();
+      ctx.globalAlpha = baseA * (open ? 1 : 0.6);
+      ctx.lineWidth = 2 * S;
+      pathX(ctx, e.x, e.y, e.r * 0.5); ctx.stroke();
       break;
     }
 
     case 'pulsar': {
-      segRing(ctx, e.x, e.y, e.rBig + 5 * S, e.hpMax, e.hp, S, 2.7);
+      segRing(ctx, e.x, e.y, e.rBig + 6 * S, e.hpMax, e.hp, S, 2.7);
       const flick = e.warn && Math.floor(e.age * 18) % 2 === 0;
       const lit = e.armed || flick;
-      ctx.strokeStyle = lit ? HAZARD : INK;
-      ctx.fillStyle = lit ? HAZARD : INK;
       if (lit) {
         ctx.globalAlpha = baseA * 0.26;
         pathO(ctx, e.x, e.y, e.rBig); ctx.fill();
         ctx.globalAlpha = baseA;
-        ctx.lineWidth = 1.8 * S;
+        ctx.lineWidth = 2 * S;
         pathO(ctx, e.x, e.y, e.rBig); ctx.stroke();
-        pathX(ctx, e.x, e.y, e.rBig * 0.42); ctx.stroke();
+        pathX(ctx, e.x, e.y, e.rBig * 0.5); ctx.stroke();
       } else {
-        ctx.globalAlpha = baseA * 0.2;
+        // Same hue, dimmed right down: the gate never changes, only the window.
+        ctx.globalAlpha = baseA * 0.18;
         ctx.setLineDash([2 * S, 5 * S]);
         ctx.lineWidth = 1 * S;
         pathO(ctx, e.x, e.y, e.rBig); ctx.stroke();
         ctx.setLineDash([]);
-        ctx.globalAlpha = baseA;
+        ctx.globalAlpha = baseA * 0.5;
         ctx.lineWidth = 1.6 * S;
         pathX(ctx, e.x, e.y, e.rSmall * 0.9); ctx.stroke();
       }
@@ -487,14 +488,14 @@ function drawRunStrip(ctx, g) {
   ctx.save();
   ctx.globalAlpha = 0.22; ctx.fillStyle = INK;
   ctx.fillRect(-w / 2, 14 * S, w, 1.6 * S);
-  ctx.globalAlpha = 0.95; ctx.fillStyle = FORCE;
+  ctx.globalAlpha = 0.95; ctx.fillStyle = RING;
   ctx.fillRect(-w / 2, 14 * S, w * Math.min(1, g.score / g.target), 1.6 * S);
   ctx.restore();
 
   const n = g.livesMax, sp = 9 * S;
   for (let i = 0; i < n; i++) {
     ctx.globalAlpha = i < g.lives ? 0.9 : 0.18;
-    ctx.fillStyle = i < g.lives ? HAZARD : INK;
+    ctx.fillStyle = i < g.lives ? RED : INK;
     ctx.beginPath();
     ctx.arc((i - (n - 1) / 2) * sp, -13 * S, 2.3 * S, 0, TAU);
     ctx.fill();
@@ -506,14 +507,14 @@ function drawLaunchStrip(ctx, g) {
   const S = g.S;
   text(ctx, 'BOTH HOLD', 0, -3 * S, { size: 11 * S, color: INK, alpha: 0.9, ls: 2.2 });
   if (g.banner) {
-    text(ctx, g.banner, 0, 8 * S, { size: 8 * S, color: HAZARD, alpha: 0.9, ls: 2 });
+    text(ctx, g.banner, 0, 8 * S, { size: 8 * S, color: RED, alpha: 0.9, ls: 2 });
   }
 
   const w = 100 * S, k = g.holdT / CFG.launch.hold;
   ctx.save();
   ctx.globalAlpha = 0.22; ctx.fillStyle = INK;
   ctx.fillRect(-w / 2, 14 * S, w, 2.6 * S);
-  ctx.globalAlpha = 1; ctx.fillStyle = FORCE;
+  ctx.globalAlpha = 1; ctx.fillStyle = RING;
   ctx.fillRect(-w / 2, 14 * S, w * k, 2.6 * S);
   ctx.restore();
 }

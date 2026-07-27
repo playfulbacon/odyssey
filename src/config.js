@@ -9,7 +9,7 @@ export const CFG = {
   scaleMax: 1.9,
 
   paddle: {
-    w: 88,        // base width, before WIDE PADDLES upgrade
+    w: 88,        // fixed: width is not a lever, the line's *angle* is
     h: 11,
     margin: 62,   // distance from the screen edge to the paddle line
     round: 5,
@@ -43,7 +43,7 @@ export const CFG = {
     baseTime: 60,
     timeBonusPerSec: 25,
     // Score needed to clear run n.
-    target: (n) => Math.round(1200 * Math.pow(n, 1.28)),
+    target: (n) => Math.round(1000 * Math.pow(n, 1.25)),
   },
 
   base: {
@@ -71,11 +71,6 @@ export const UPGRADES = [
     show: (l) => `${CFG.run.baseTime + 8 * l}s`,
   },
   {
-    id: 'paddle', name: 'WIDE PADDLES', base: 700, growth: 1.72, max: 6,
-    desc: '+10% paddle width. Easier to keep the line where you want it.',
-    show: (l) => `+${l * 10}% width`,
-  },
-  {
     id: 'boost', name: 'LONG BOOST', base: 760, growth: 1.72, max: 6,
     desc: '+12% boost duration. Longer window to punch through brittle armour.',
     show: (l) => `+${l * 12}% boost`,
@@ -88,7 +83,6 @@ export const derived = (up) => ({
   lives: CFG.base.lives + (up.lives || 0),
   power: CFG.base.power + (up.power || 0),
   time: CFG.run.baseTime + 8 * (up.time || 0),
-  paddleScale: 1 + 0.10 * (up.paddle || 0),
   boostScale: 1 + 0.12 * (up.boost || 0),
 });
 
@@ -120,7 +114,7 @@ export function difficulty(run) {
     maxObstacles: Math.min(7, 1 + Math.round(k * 0.8)),
     obstacleGap: Math.max(1.5, 4.6 - k * 0.32),      // seconds between spawns
     obstacleTtl: Math.max(9, 18 - k * 0.7),          // how long one sticks around
-    shieldBonus: Math.min(5, Math.floor(k * 0.45)),  // added to a collectable's shield
+    shieldBonus: Math.min(2, Math.floor(k * 0.3)),   // added to a collectable's shield
     armourBonus: Math.floor(k * 0.4),                // added to a breakable obstacle's hp
     ballSpeed: 1 + Math.min(0.55, k * 0.055),
     entitySpeed: 1 + k * 0.11,

@@ -79,7 +79,7 @@ class App {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const s = Math.max(CFG.scaleMin, Math.min(CFG.scaleMax, w / CFG.refWidth));
     this.game.resize(w, h, s);
-    this.input.setBounds((CFG.paddle.w * s * (this.game.paddleScale || 1)) / 2, w);
+    this.input.setBounds((CFG.paddle.w * s) / 2, w);
   }
 
   // ── flow ──────────────────────────────────────────────────────────────────

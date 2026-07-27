@@ -1,127 +1,146 @@
 // Entity registry, factories, per-frame behaviour and hit tests.
 //
 // Two families:
-//   cls 'col' — collectables. Wear a shield; strip it, then touch the core.
-//   cls 'obs' — obstacles. Lethal unless you meet their specific condition.
+//   cls 'col' — collectables. Break the rings, then touch the core.
+//   cls 'obs' — obstacles. Lethal unless you meet their gate.
 //
 // Every entity is collided against as a circle except SLAB (a rectangle) and
 // ROTOR (a hub plus swept arms).
 //
 // ── the visual language ─────────────────────────────────────────────────────
 //
-// Shape says which family you are looking at:
+// Shape names the family:
 //   O  collectable — bank it
-//   X  obstacle    — do not touch it unless the colours agree
+//   X  obstacle    — it will cost you a life
 //
-// Colour is never decorative. There are four, and each one names a state:
-//   INK     nothing required. The ball at its normal pace is ink.
-//   FORCE   requires the boosted ball, which turns FORCE while it is boosting.
-//           Also every ring the ball can break: shields and armour alike.
-//   GHOST   requires both fingers off the glass, which turns the ball GHOST.
-//   HAZARD  lethal right now. The ball is never HAZARD, so it never gets through.
+// Temperature names the family a second time, so it reads at a glance and does
+// not depend on picking out a shape at speed:
+//   cool  collectable. Hue is identity only — an ORB is not "more teal" than a
+//         DRIFTER is blue, they are just different pieces.
+//   warm  obstacle. Hue is *not* identity: it names the gate, the one thing
+//         that gets you past it. Two obstacles with the same gate share a hue.
 //
-// So the rule a player learns once and applies everywhere is: make the ball the
-// same colour as the thing you want to go through. That is not a label stuck on
-// the mechanic — resolveObstacle() below is literally a colour comparison.
+// Two colours belong to neither family, and they are the two that carry rules:
+//   RING   violet. The boosted ball, and every breakable ring in the game —
+//          collectable shields and obstacle armour are the same material and
+//          come off the same way. Boost is the only thing that breaks anything.
+//   INK    the ball at rest, the paddles, a held half of the line.
+//
+// And the line itself is the readout for the one state the ball does not wear:
+// a half you are not touching turns the PHANTOM's gold, both halves lit means
+// the phantom is open. See lineColorFor().
 
 export const PALETTE = {
   ink: '#e9ecef',
-  force: '#57e2c0',
-  ghost: '#b98cff',
-  hazard: '#ff5a5f',
+  ring: '#b98cff',
 };
 
-// The colour the ball wears in each state, and the only three colours it can
-// ever be. HAZARD is deliberately absent: nothing opens a red obstacle.
-//
-// GHOST outranks FORCE. Letting go with both hands is a deliberate, sustained
-// choice, so it should never be masked by a shove that has not faded yet — and
-// the boost rhythm a BRITTLE wants keeps one finger down anyway.
-export function ballColorFor({ boosted, handsOff }) {
-  if (handsOff) return PALETTE.ghost;
-  if (boosted) return PALETTE.force;
-  return PALETTE.ink;
+// Warm. The key is the gate an obstacle carries, so an obstacle cannot be given
+// a colour that disagrees with how it actually opens — the colour is derived.
+export const GATES = {
+  never:    { color: '#ff4a55', label: 'nothing gets through' },
+  boosted:  { color: '#ff9633', label: 'a boosted ball' },
+  handsOff: { color: '#ffcf3d', label: 'both fingers off the glass' },
+  dark:     { color: '#ff5fa8', label: 'its dark window' },
+};
+
+// Cool. Identity only.
+export const COOL = {
+  teal: '#4ee0b0',
+  blue: '#48a8f0',
+  green: '#8adc4a',
+  cyan: '#3fd2e8',
+};
+
+export const isWarm = (c) => Object.values(GATES).some((g) => g.color === c);
+export const isCool = (c) => Object.values(COOL).includes(c);
+
+// The ball wears one thing and one thing only: whether it is currently able to
+// break a ring.
+export function ballColorFor({ boosted }) {
+  return boosted ? PALETTE.ring : PALETTE.ink;
+}
+
+// The line is where "nobody is holding this end" is reported, in the colour of
+// the obstacle that state opens.
+export function lineColorFor(touching) {
+  return touching ? PALETTE.ink : GATES.handsOff.color;
 }
 
 export const COLLECTABLES = {
   orb: {
-    key: 'orb', cls: 'col', label: 'ORB', color: PALETTE.ink,
+    key: 'orb', cls: 'col', label: 'ORB', color: COOL.teal,
     value: 100, shield: 1, r: 13,
-    needs: 'any ball',
-    blurb: 'Sits still and waits. Each pass of the ball strips one FORCE ring; when the last one goes the core fills in, and the next touch banks it.',
+    blurb: 'Sits still and waits. One violet ring, and a boosted pass strips it; after that the core fills in and any touch banks it.',
     hint: 'The plain one. Learn how the line sweeps before anything else.',
   },
   drifter: {
-    key: 'drifter', cls: 'col', label: 'DRIFTER', color: PALETTE.ink,
-    value: 170, shield: 2, r: 12, speed: 34,
-    needs: 'any ball',
-    blurb: 'Same O, same FORCE rings — it just will not hold still. The stub on its back points where it has come from.',
+    key: 'drifter', cls: 'col', label: 'DRIFTER', color: COOL.blue,
+    value: 190, shield: 2, r: 12, speed: 34,
+    blurb: 'Two rings, and it will not hold still. The stub on its back points where it has come from.',
     hint: 'Lead it. Park the line where it is going, not where it is.',
   },
   splitter: {
-    key: 'splitter', cls: 'col', label: 'SPLITTER', color: PALETTE.ink,
-    value: 90, shield: 3, r: 16, shards: 3, shardValue: 70,
-    needs: 'any ball',
-    blurb: 'A double O — there is more inside. Thick rings, and cracking the core bursts it into three loose shards, each worth banking on its own.',
+    key: 'splitter', cls: 'col', label: 'SPLITTER', color: COOL.green,
+    value: 110, shield: 2, r: 16, shards: 3, shardValue: 80,
+    blurb: 'A double O — there is more inside. Crack the core and it bursts into three loose shards, each already open and worth banking on its own.',
     hint: 'Do not wander off after it pops — the shards fade.',
   },
   runner: {
-    key: 'runner', cls: 'col', label: 'RUNNER', color: PALETTE.ink,
-    value: 240, shield: 1, r: 10, speed: 118,
-    needs: 'any ball',
+    key: 'runner', cls: 'col', label: 'RUNNER', color: COOL.cyan,
+    value: 260, shield: 1, r: 10, speed: 118,
     blurb: 'A small O with a thinning arc around it — that arc is its patience. One ring, fat payout, never stops moving.',
-    hint: 'A boosted ball covers ground fast enough to catch it.',
+    hint: 'A boosted ball is both the key to its ring and fast enough to catch it.',
   },
   shard: {
-    key: 'shard', cls: 'col', label: 'SHARD', color: PALETTE.ink, hidden: true,
-    value: 70, shield: 0, r: 6,
+    key: 'shard', cls: 'col', label: 'SHARD', color: COOL.green, hidden: true,
+    value: 80, shield: 0, r: 6,
   },
 };
 
+// `gate` is the whole obstacle. It decides when the thing is lethal, and it
+// decides what colour the thing is — see colorOfGate below.
 export const OBSTACLES = {
   slab: {
-    key: 'slab', cls: 'obs', label: 'SLAB', color: PALETTE.hazard,
+    key: 'slab', cls: 'obs', label: 'SLAB', gate: 'never',
     value: 0, hp: 0,
-    needs: 'nothing gets through',
-    blurb: 'HAZARD red, with no rings on it — nothing to break and no state that opens it. Move the line around it.',
+    blurb: 'Red, and no rings on it — nothing to break and no state that opens it. Move the line around it.',
     hint: 'Pure avoidance. Costs a life every time.',
   },
+  rotor: {
+    key: 'rotor', cls: 'obs', label: 'ROTOR', gate: 'never',
+    value: 0, hp: 0, armLen: 44, spin: 1.5,
+    blurb: 'The same red as the slab, because it has the same answer: none. Hub and both sweeping arms are lethal.',
+    hint: 'Cross behind it, never alongside it.',
+  },
   brittle: {
-    key: 'brittle', cls: 'obs', label: 'BRITTLE', color: PALETTE.force,
+    key: 'brittle', cls: 'obs', label: 'BRITTLE', gate: 'boosted',
     value: 430, hp: 3, r: 20,
-    needs: 'a FORCE ball',
-    blurb: 'FORCE teal, the same colour the ball turns while it is boosting. Match it and the armour comes off; arrive as any other colour and it kills you. Keep one finger down while you do it — with both of you off, the ball goes GHOST instead.',
-    hint: 'Take turns lifting so the ball stays teal in both directions.',
+    blurb: 'Orange: only a boosted ball survives the contact, and only a boosted ball takes its armour off. Arrive at normal pace and it costs a life.',
+    hint: 'Take turns lifting so the ball is violet in both directions.',
   },
   phantom: {
-    key: 'phantom', cls: 'obs', label: 'PHANTOM', color: PALETTE.ghost,
-    value: 660, hp: 2, r: 22,
-    needs: 'a GHOST ball',
-    blurb: 'GHOST violet, the colour the ball turns when nobody is holding. Its outline is dashed until you both let go, then it solidifies and takes damage.',
-    hint: 'Aim first — once you both let go, neither paddle moves.',
+    key: 'phantom', cls: 'obs', label: 'PHANTOM', gate: 'handsOff',
+    value: 700, hp: 1, r: 22, armourGrows: false,
+    blurb: 'Gold, the colour your half of the line turns the moment you let go. With both of you off the glass it is harmless — and a boosted ball in that same window destroys it outright.',
+    hint: 'Aim first. One of you lifts, then the other, before the shove dies.',
   },
   pulsar: {
-    key: 'pulsar', cls: 'obs', label: 'PULSAR', color: PALETTE.hazard,
-    value: 320, hp: 2, r: 19, rDark: 10, period: 2.4, duty: 0.55,
-    needs: 'an INK ball, while it is dark',
-    blurb: 'The one that changes colour instead of asking you to. Lit it is HAZARD red and wide; dark it drops to INK, and an INK ball — normal pace, at least one finger down — breaks it.',
+    key: 'pulsar', cls: 'obs', label: 'PULSAR', gate: 'dark',
+    value: 340, hp: 2, r: 19, rDark: 10, period: 2.4, duty: 0.55,
+    blurb: 'Lit and wide it is lethal; dark and small it is inert. Boost through it during a dark window to strip the armour.',
     hint: 'Watch the flicker just before it lights — that is your warning.',
-  },
-  rotor: {
-    key: 'rotor', cls: 'obs', label: 'ROTOR', color: PALETTE.hazard,
-    value: 0, hp: 0, armLen: 44, spin: 1.5,
-    needs: 'nothing gets through',
-    blurb: 'HAZARD red from hub to arm tip, and the arms sweep. Same rule as the slab, only it comes to you.',
-    hint: 'Cross behind it, never alongside it.',
   },
 };
 
-// What colour is this piece *right now*? Everything except the pulsar is fixed;
-// the pulsar swaps between HAZARD and INK as it breathes.
+export const colorOfGate = (gate) => GATES[gate].color;
+for (const d of Object.values(OBSTACLES)) d.color = colorOfGate(d.gate);
+
+// What colour is this piece wearing? Fixed for everything — the pulsar changes
+// brightness and size as it breathes, never its hue, because its gate never
+// changes either.
 export function stateColorOf(e) {
-  if (e.cls === 'col') return PALETTE.ink;
-  if (e.type === 'pulsar') return e.armed ? PALETTE.hazard : PALETTE.ink;
-  return e.color;
+  return e.cls === 'obs' ? colorOfGate(e.gate) : e.color;
 }
 
 export const ALL = { ...COLLECTABLES, ...OBSTACLES };
@@ -186,7 +205,8 @@ export function makeShards(parent, S, diff, rng = Math.random) {
 export function makeObstacle(type, x, y, S, diff, rng = Math.random) {
   const def = OBSTACLES[type];
   const e = base(def, x, y, S);
-  e.hpMax = def.hp ? def.hp + diff.armourBonus : 0;
+  e.gate = def.gate;
+  e.hpMax = def.hp ? def.hp + (def.armourGrows === false ? 0 : diff.armourBonus) : 0;
   e.hp = e.hpMax;
   e.value = Math.round(def.value * diff.valueScale);
   e.ttl = diff.obstacleTtl;
@@ -310,10 +330,33 @@ export function hitTest(e, x, y, br) {
   return (x - e.x) ** 2 + (y - e.y) ** 2 < rr * rr;
 }
 
-// How a contact with this obstacle resolves. The lock is the obstacle's colour,
-// the key is the ball's — there is no second rule hiding behind this one.
-//   'damage' — the ball chews through it
+// Is this obstacle lethal to touch right now? Exactly one condition per gate,
+// and the gate is what picks the colour it is wearing.
+export function isLethal(e, world) {
+  switch (e.gate) {
+    case 'never':    return true;
+    case 'boosted':  return !world.boosted;
+    case 'handsOff': return !world.handsOff;
+    case 'dark':     return !!e.armed;
+    default:         return false;
+  }
+}
+
+// How a contact resolves.
 //   'kill'   — the players lose a life
+//   'damage' — a ring comes off
+//   'pass'   — the ball goes through and nothing happens
+//
+// Rings are the same material everywhere in the game, on a collectable or on an
+// obstacle, and only a boosted ball breaks them.
 export function resolveObstacle(e, world) {
-  return stateColorOf(e) === ballColorFor(world) ? 'damage' : 'kill';
+  if (isLethal(e, world)) return 'kill';
+  return world.boosted && e.hp > 0 ? 'damage' : 'pass';
+}
+
+// Collectables are never lethal. Their shield is armour by another name: it
+// only comes off a boosted ball, and an unboosted pass does nothing at all.
+export function resolveCollectable(e, world) {
+  if (e.exposed) return 'collect';
+  return world.boosted ? 'damage' : 'pass';
 }

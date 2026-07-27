@@ -7,8 +7,8 @@
 
 import { CFG, difficulty, derived } from './config.js';
 import {
-  PALETTE, COLLECTABLES, OBSTACLES, makeCollectable, makeObstacle, makeShards,
-  updateEntity, hitTest, resolveObstacle, stateColorOf, ballColorFor,
+  PALETTE, GATES, COLLECTABLES, OBSTACLES, makeCollectable, makeObstacle, makeShards,
+  updateEntity, hitTest, resolveObstacle, resolveCollectable, stateColorOf, ballColorFor,
 } from './entities.js';
 import { sfx } from './audio.js';
 
@@ -33,7 +33,7 @@ export class Game {
     this.ball = { t: 0, dir: 1, boosted: false, trail: [], x: 0, y: 0 };
     this.shake = 0;
     this.flash = 0;
-    this.flashColor = PALETTE.hazard;
+    this.flashColor = GATES.never.color;
     this.banner = null;
   }
 
@@ -47,7 +47,6 @@ export class Game {
     this.run = run;
     this.diff = difficulty(run);
     this.power = d.power;
-    this.paddleScale = d.paddleScale;
     this.livesMax = d.lives;
     this.lives = d.lives;
     this.timeLeft = d.time;
@@ -70,7 +69,6 @@ export class Game {
     this.diff.obstaclePool = this.pgIsObstacle ? [type] : [];
     this.diff.collectPool = this.pgIsObstacle ? ['orb'] : [type];
     this.power = CFG.base.power;
-    this.paddleScale = 1;
     this.livesMax = Infinity;
     this.lives = Infinity;
     this.timeLeft = Infinity;
@@ -117,7 +115,7 @@ export class Game {
 
   // ── geometry ──────────────────────────────────────────────────────────────
 
-  get paddleW() { return CFG.paddle.w * this.S * this.paddleScale; }
+  get paddleW() { return CFG.paddle.w * this.S; }
   get paddleH() { return CFG.paddle.h * this.S; }
   get ballR() { return CFG.ball.r * this.S; }
   get margin() { return CFG.paddle.margin * this.S; }
@@ -245,11 +243,11 @@ export class Game {
       if (this._collide(p.x, p.y)) return;
     }
 
-    // The trail remembers which state the ball was in, so a boost leaves a
-    // FORCE streak behind it and a hands-off glide leaves a GHOST one.
+    // The trail remembers whether the ball was boosted, so a punch through a
+    // ring leaves a violet streak behind it.
     this.ball.trail.push({
       x: this.ball.x, y: this.ball.y,
-      c: ballColorFor({ boosted: this.ball.boosted, handsOff: this.input.handsOff }),
+      c: ballColorFor({ boosted: this.ball.boosted }),
     });
     if (this.ball.trail.length > CFG.ball.trail) this.ball.trail.shift();
   }
@@ -275,8 +273,11 @@ export class Game {
       if (!hitTest(e, x, y, br)) continue;
 
       if (e.cls === 'col') {
-        this._hitCollectable(e);
-        e.cool = CFG.hitCool;
+        const r = resolveCollectable(e, world);
+        if (r === 'collect') this._collect(e);
+        else if (r === 'damage') this._breakShield(e);
+        // A pass leaves no cooldown, so a boost arriving mid-crossing still lands.
+        if (r !== 'pass') e.cool = CFG.hitCool;
       } else {
         const r = resolveObstacle(e, world);
         if (r === 'kill') { this._loseLife(e); return true; }
@@ -286,27 +287,24 @@ export class Game {
     return false;
   }
 
-  _hitCollectable(e) {
-    if (e.shield > 0) {
-      e.shield = Math.max(0, e.shield - this.power);
-      sfx.shield();
-      this._burst(e.x, e.y, PALETTE.force, 6, 90);
-      if (e.shield === 0) {
-        e.exposed = true;
-        e.flare = 1;
-        sfx.crack();
-      }
-      return;
+  _breakShield(e) {
+    e.shield = Math.max(0, e.shield - this.power);
+    e.flare = 1;
+    sfx.shield();
+    this._burst(e.x, e.y, PALETTE.ring, 6, 90);
+    if (e.shield === 0) {
+      e.exposed = true;
+      sfx.crack();
+      this._burst(e.x, e.y, e.color, 10, 130);
     }
-    this._collect(e);
   }
 
   _collect(e) {
     e.dead = true;
     const gain = Math.round(e.value * this.mult);
     this.score += gain;
-    this._float(e.x, e.y, `+${gain}`, PALETTE.force);
-    this._burst(e.x, e.y, PALETTE.force, 16, 150);
+    this._float(e.x, e.y, `+${gain}`, e.color);
+    this._burst(e.x, e.y, e.color, 16, 150);
     sfx.collect(this.mult);
     this.mult = Math.min(CFG.multCap, this.mult + 1);
     this.shake = Math.max(this.shake, 2 * this.S);
@@ -319,7 +317,7 @@ export class Game {
   _damageObstacle(e) {
     e.hp -= this.power;
     e.flare = 1;
-    this._burst(e.x, e.y, stateColorOf(e), 8, 120);
+    this._burst(e.x, e.y, PALETTE.ring, 8, 120);
     if (e.hp > 0) { sfx.crack(); this.shake = Math.max(this.shake, 2.5 * this.S); return; }
 
     e.dead = true;
@@ -336,10 +334,10 @@ export class Game {
 
   _loseLife(e) {
     sfx.die();
-    this._burst(this.ball.x, this.ball.y, PALETTE.hazard, 30, 260);
+    this._burst(this.ball.x, this.ball.y, GATES.never.color, 30, 260);
     this.shake = 12 * this.S;
     this.flash = 0.7;
-    this.flashColor = PALETTE.hazard;
+    this.flashColor = GATES.never.color;
     this.mult = 1;
     if (e) { e.dead = true; this._burst(e.x, e.y, stateColorOf(e), 10, 140); }
 

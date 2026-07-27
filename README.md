@@ -21,68 +21,78 @@ constantly.
 **Lift** your finger to shove the ball away from you. For a moment it flies. A
 lift does nothing to a ball coming the other way, and if you both lift at once
 the two shoves cancel out. While your finger is off the glass your half of the
-line fades — and your paddle is frozen where you left it.
+line turns gold — and your paddle is frozen where you left it.
 
 ## Reading the field
 
-Shape tells you the family, colour tells you the state, and the ball wears its
-own state — so the whole game reduces to one rule: **make the ball the same
-colour as the thing you want to go through.**
+**Cool is safe, warm will cost you a life.** Shape says the same thing a second
+time — collectables are an **O**, obstacles an **X** — so you never have to pick
+a single signal out at speed.
 
-That is not a label stuck on the mechanic. `resolveObstacle()` is literally a
-colour comparison between what the obstacle is wearing and what the ball is
-wearing; there is no second rule hiding behind it.
+Among collectables the hue is only identity. Among obstacles it is not: **the
+warm hue names the gate**, the one thing that makes the obstacle safe to touch.
+Two obstacles that open the same way look the same, and an obstacle's colour is
+*derived* from its gate in code, so the picture cannot drift from the rules.
 
 | | |
 |---|---|
-| **O** | collectable — break its rings, then touch the core |
-| **X** | obstacle — a life, unless the colours agree |
-| **INK** | nothing required. The ball is ink at normal pace. |
-| **FORCE** teal | the boosted ball — and every ring the ball can break, on collectables and obstacles alike |
-| **GHOST** violet | both fingers off the glass |
-| **HAZARD** red | lethal right now. The ball is never this colour, so red never opens. |
+| **red** | nothing gets through. Ever. |
+| **orange** | safe only to a boosted ball. |
+| **gold** | safe only with both fingers off the glass. |
+| **pink** | safe only during its dark window. |
 
-The ball holds one key at a time, and GHOST outranks FORCE: letting go with both
-hands is a deliberate choice and should not be masked by a shove that has not
-faded yet. It also means the boost rhythm has to keep one finger down.
+Two colours belong to neither family, and they are the two that carry rules:
+
+- **violet** — the boosted ball, and *every* breakable ring in the game. A ring
+  means one thing everywhere: only a boosted ball takes it off. Collectable
+  shields and obstacle armour are the same material.
+- **ink** — the ball at rest, the paddles, a half of the line someone is holding.
+
+The ball reports one thing and one thing only: violet means it can break a ring.
+The other state lives on **the line**, which is where it belongs — each half
+reports its own player. A half nobody is holding turns gold, and when both
+halves are gold the PHANTOM is open. That is why they are the same colour.
 
 ## Pieces
 
-**Collectables** wear a shield. Every pass of the ball strips *ball power* off
-it. Once the shield is gone the core is exposed; touch it again to bank it.
-
-All four are an **O** ringed in FORCE teal; they differ by structure and motion,
-never by a colour that means nothing.
+**Collectables** wear rings, and rings work the same here as they do on an
+obstacle: only a boosted pass strips them, *ball power* rings at a time. An
+unboosted ball goes straight through and does nothing. Once the last ring is
+gone the core fills in — touch it again, boosted or not, to bank it.
 
 | | rings | pays | behaviour |
 |---|---|---|---|
 | **ORB** | 1 | 100 | Static. The plain one. |
-| **DRIFTER** | 2 | 170 | Wanders, bounces off the walls; a stub shows where it came from. |
-| **SPLITTER** | 3 | 90 | A double O. Bursts into three loose shards when cracked. |
-| **RUNNER** | 1 | 240 | Small, fast, with a draining arc for its patience. |
+| **DRIFTER** | 2 | 190 | Wanders, bounces off the walls; a stub shows where it came from. |
+| **SPLITTER** | 2 | 110 | A double O. Bursts into three already-open shards when cracked. |
+| **RUNNER** | 1 | 260 | Small, fast, with a draining arc for its patience. |
 
 **Obstacles** cost a life on the wrong kind of contact. The breakable ones have
 armour and pay far more than any collectable, because getting them wrong is
 expensive.
 
-| | wears | armour | pays | opens to |
+| | wears | rings | pays | safe to touch with |
 |---|---|---|---|---|
-| **SLAB** | HAZARD | — | — | nothing. Move the line around it. |
-| **ROTOR** | HAZARD | — | — | nothing, and it sweeps toward you. |
-| **BRITTLE** | FORCE | 3 | 430 | the teal, boosted ball. |
-| **PHANTOM** | GHOST | 2 | 660 | the violet ball — both fingers off. |
-| **PULSAR** | HAZARD ⇄ INK | 2 | 320 | a plain ball, but only while it is dark. |
+| **SLAB** | red | — | — | nothing. Move the line around it. |
+| **ROTOR** | red | — | — | nothing, and it sweeps toward you. |
+| **BRITTLE** | orange | 3 | 430 | a boosted ball. |
+| **PULSAR** | pink | 2 | 340 | anything, during its dark window. |
+| **PHANTOM** | gold | 1 | 700 | both fingers off the glass. |
 
-The PULSAR is the one that changes colour instead of asking you to: red and wide
-while lit, ink and small while dark.
+The PULSAR is the timing one: lit and wide it kills, dark and small it is inert.
+It never changes hue, because its gate never changes — only the window does.
+
+The PHANTOM carries two gates at once, so it only has one ring: you are safe to
+coast through it with both hands off, and a boost that is *still alive* in that
+same window destroys it outright.
 
 Everything fades in behind a dashed telegraph ring and is inert until it lands.
 
-Breaking a BRITTLE takes three teal passes, and arriving any other colour kills —
-so the co-op rhythm it wants is the two of you *alternating* lifts, each shoving
-as the ball runs away from you, keeping it teal in both directions. Because one
-of you is always still holding, the ball never slips to GHOST mid-rhythm. A
-PHANTOM wants the exact opposite: line it up, then both let go and coast.
+Because every ring needs a boost, the alternating lift is the game's basic
+rhythm rather than a trick for one obstacle: you each shove as the ball runs
+away from you, so it is violet in both directions and can break anything it
+crosses. A PHANTOM is the one piece that wants you to stop doing that — line it
+up, then one of you lifts, then the other, before the first shove dies.
 
 **Launching.** At the start of a run, and after every lost life, both players
 hold their half until the bar fills. A lost ball comes back on the paddle of the
@@ -91,8 +101,8 @@ player it was heading toward.
 ## Runs
 
 Each run is a clock and a score to beat. Clear it and you spend your points on
-upgrades — lives, ball power, run time, paddle width, boost duration — before
-the next one, which brings a bigger target and a nastier field. Miss the target
+upgrades — lives, ball power, run time, boost duration — before the next one,
+which brings a bigger target and a nastier field. Miss the target
 or burn every life and the game is over. Score carries across runs, so the
 question is how deep you can get.
 
@@ -157,8 +167,10 @@ test/           rules tests (node --test)
 
 `src/config.js` is the whole dial board — ball pace, boost strength and
 duration, launch hold time, run targets, upgrade prices, and the per-run
-difficulty curve. `src/entities.js` holds each piece's own numbers (shield,
-armour, payout, speed) alongside the blurb the playground shows.
+difficulty curve. `src/entities.js` holds the palette, the gate table, and each
+piece's own numbers (rings, payout, speed) alongside the blurb the playground
+shows. An obstacle's colour is not written down anywhere: it comes from its
+gate, so adding a piece means picking a gate, not picking a hue.
 
 While a run is open, `window.__g` is the live game and `window.__odyssey` the
 meta-game, so values can be poked from the console mid-play.
