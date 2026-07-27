@@ -6,70 +6,123 @@
 //
 // Every entity is collided against as a circle except SLAB (a rectangle) and
 // ROTOR (a hub plus swept arms).
+//
+// ── the visual language ─────────────────────────────────────────────────────
+//
+// Shape says which family you are looking at:
+//   O  collectable — bank it
+//   X  obstacle    — do not touch it unless the colours agree
+//
+// Colour is never decorative. There are four, and each one names a state:
+//   INK     nothing required. The ball at its normal pace is ink.
+//   FORCE   requires the boosted ball, which turns FORCE while it is boosting.
+//           Also every ring the ball can break: shields and armour alike.
+//   GHOST   requires both fingers off the glass, which turns the ball GHOST.
+//   HAZARD  lethal right now. The ball is never HAZARD, so it never gets through.
+//
+// So the rule a player learns once and applies everywhere is: make the ball the
+// same colour as the thing you want to go through. That is not a label stuck on
+// the mechanic — resolveObstacle() below is literally a colour comparison.
+
+export const PALETTE = {
+  ink: '#e9ecef',
+  force: '#57e2c0',
+  ghost: '#b98cff',
+  hazard: '#ff5a5f',
+};
+
+// The colour the ball wears in each state, and the only three colours it can
+// ever be. HAZARD is deliberately absent: nothing opens a red obstacle.
+//
+// GHOST outranks FORCE. Letting go with both hands is a deliberate, sustained
+// choice, so it should never be masked by a shove that has not faded yet — and
+// the boost rhythm a BRITTLE wants keeps one finger down anyway.
+export function ballColorFor({ boosted, handsOff }) {
+  if (handsOff) return PALETTE.ghost;
+  if (boosted) return PALETTE.force;
+  return PALETTE.ink;
+}
 
 export const COLLECTABLES = {
   orb: {
-    key: 'orb', cls: 'col', label: 'ORB', color: '#57e2c0',
+    key: 'orb', cls: 'col', label: 'ORB', color: PALETTE.ink,
     value: 100, shield: 1, r: 13,
-    blurb: 'Sits still and waits. One shield layer per pass until the core opens up, then touch it to bank it.',
+    needs: 'any ball',
+    blurb: 'Sits still and waits. Each pass of the ball strips one FORCE ring; when the last one goes the core fills in, and the next touch banks it.',
     hint: 'The plain one. Learn how the line sweeps before anything else.',
   },
   drifter: {
-    key: 'drifter', cls: 'col', label: 'DRIFTER', color: '#57c0e2',
+    key: 'drifter', cls: 'col', label: 'DRIFTER', color: PALETTE.ink,
     value: 170, shield: 2, r: 12, speed: 34,
-    blurb: 'Wanders the field and bounces off the walls. Two shield layers.',
+    needs: 'any ball',
+    blurb: 'Same O, same FORCE rings — it just will not hold still. The stub on its back points where it has come from.',
     hint: 'Lead it. Park the line where it is going, not where it is.',
   },
   splitter: {
-    key: 'splitter', cls: 'col', label: 'SPLITTER', color: '#9ae257',
+    key: 'splitter', cls: 'col', label: 'SPLITTER', color: PALETTE.ink,
     value: 90, shield: 3, r: 16, shards: 3, shardValue: 70,
-    blurb: 'Thick shield. Crack the core and it bursts into three loose shards, each worth banking on its own.',
+    needs: 'any ball',
+    blurb: 'A double O — there is more inside. Thick rings, and cracking the core bursts it into three loose shards, each worth banking on its own.',
     hint: 'Do not wander off after it pops — the shards fade.',
   },
   runner: {
-    key: 'runner', cls: 'col', label: 'RUNNER', color: '#e2d257',
+    key: 'runner', cls: 'col', label: 'RUNNER', color: PALETTE.ink,
     value: 240, shield: 1, r: 10, speed: 118,
-    blurb: 'Thin shield, fat payout, never stops moving. Fades out if you take too long.',
+    needs: 'any ball',
+    blurb: 'A small O with a thinning arc around it — that arc is its patience. One ring, fat payout, never stops moving.',
     hint: 'A boosted ball covers ground fast enough to catch it.',
   },
   shard: {
-    key: 'shard', cls: 'col', label: 'SHARD', color: '#9ae257', hidden: true,
+    key: 'shard', cls: 'col', label: 'SHARD', color: PALETTE.ink, hidden: true,
     value: 70, shield: 0, r: 6,
   },
 };
 
 export const OBSTACLES = {
   slab: {
-    key: 'slab', cls: 'obs', label: 'SLAB', color: '#ff5a5f',
-    value: 0, hp: 0, kill: 'always',
-    blurb: 'Solid. There is no clever way through a slab — move the line around it.',
+    key: 'slab', cls: 'obs', label: 'SLAB', color: PALETTE.hazard,
+    value: 0, hp: 0,
+    needs: 'nothing gets through',
+    blurb: 'HAZARD red, with no rings on it — nothing to break and no state that opens it. Move the line around it.',
     hint: 'Pure avoidance. Costs a life every time.',
   },
   brittle: {
-    key: 'brittle', cls: 'obs', label: 'BRITTLE', color: '#ffa63d',
-    value: 430, hp: 3, kill: 'unboosted', r: 20,
-    blurb: 'Armoured, but a boosted ball bites. Keep boosting through it until the armour is gone. Touch it at normal pace and it kills you.',
-    hint: 'Time your lift so the ball is already flying when it arrives.',
+    key: 'brittle', cls: 'obs', label: 'BRITTLE', color: PALETTE.force,
+    value: 430, hp: 3, r: 20,
+    needs: 'a FORCE ball',
+    blurb: 'FORCE teal, the same colour the ball turns while it is boosting. Match it and the armour comes off; arrive as any other colour and it kills you. Keep one finger down while you do it — with both of you off, the ball goes GHOST instead.',
+    hint: 'Take turns lifting so the ball stays teal in both directions.',
   },
   phantom: {
-    key: 'phantom', cls: 'obs', label: 'PHANTOM', color: '#b98cff',
-    value: 660, hp: 2, kill: 'touched', r: 22,
-    blurb: 'Only solid to a ball nobody is holding. Line it up, then both let go and coast through. Any finger on the glass and it kills you.',
+    key: 'phantom', cls: 'obs', label: 'PHANTOM', color: PALETTE.ghost,
+    value: 660, hp: 2, r: 22,
+    needs: 'a GHOST ball',
+    blurb: 'GHOST violet, the colour the ball turns when nobody is holding. Its outline is dashed until you both let go, then it solidifies and takes damage.',
     hint: 'Aim first — once you both let go, neither paddle moves.',
   },
   pulsar: {
-    key: 'pulsar', cls: 'obs', label: 'PULSAR', color: '#ff7ab8',
-    value: 320, hp: 2, kill: 'armed', r: 19, rDark: 10, period: 2.4, duty: 0.55,
-    blurb: 'Breathes in and out. Lit and wide, it kills. Dark and small, it takes damage.',
+    key: 'pulsar', cls: 'obs', label: 'PULSAR', color: PALETTE.hazard,
+    value: 320, hp: 2, r: 19, rDark: 10, period: 2.4, duty: 0.55,
+    needs: 'an INK ball, while it is dark',
+    blurb: 'The one that changes colour instead of asking you to. Lit it is HAZARD red and wide; dark it drops to INK, and an INK ball — normal pace, at least one finger down — breaks it.',
     hint: 'Watch the flicker just before it lights — that is your warning.',
   },
   rotor: {
-    key: 'rotor', cls: 'obs', label: 'ROTOR', color: '#ff5a5f',
-    value: 0, hp: 0, kill: 'always', armLen: 44, spin: 1.5,
-    blurb: 'A hub with two sweeping arms. The whole thing is lethal, arms included.',
+    key: 'rotor', cls: 'obs', label: 'ROTOR', color: PALETTE.hazard,
+    value: 0, hp: 0, armLen: 44, spin: 1.5,
+    needs: 'nothing gets through',
+    blurb: 'HAZARD red from hub to arm tip, and the arms sweep. Same rule as the slab, only it comes to you.',
     hint: 'Cross behind it, never alongside it.',
   },
 };
+
+// What colour is this piece *right now*? Everything except the pulsar is fixed;
+// the pulsar swaps between HAZARD and INK as it breathes.
+export function stateColorOf(e) {
+  if (e.cls === 'col') return PALETTE.ink;
+  if (e.type === 'pulsar') return e.armed ? PALETTE.hazard : PALETTE.ink;
+  return e.color;
+}
 
 export const ALL = { ...COLLECTABLES, ...OBSTACLES };
 export const defOf = (type) => ALL[type];
@@ -133,7 +186,6 @@ export function makeShards(parent, S, diff, rng = Math.random) {
 export function makeObstacle(type, x, y, S, diff, rng = Math.random) {
   const def = OBSTACLES[type];
   const e = base(def, x, y, S);
-  e.kill = def.kill;
   e.hpMax = def.hp ? def.hp + diff.armourBonus : 0;
   e.hp = e.hpMax;
   e.value = Math.round(def.value * diff.valueScale);
@@ -258,16 +310,10 @@ export function hitTest(e, x, y, br) {
   return (x - e.x) ** 2 + (y - e.y) ** 2 < rr * rr;
 }
 
-// How a contact with this obstacle resolves, given the world state.
+// How a contact with this obstacle resolves. The lock is the obstacle's colour,
+// the key is the ball's — there is no second rule hiding behind this one.
 //   'damage' — the ball chews through it
 //   'kill'   — the players lose a life
-//   'pass'   — nothing happens
 export function resolveObstacle(e, world) {
-  switch (e.kill) {
-    case 'always':    return 'kill';
-    case 'unboosted': return world.boosted ? 'damage' : 'kill';
-    case 'touched':   return world.handsOff ? 'damage' : 'kill';
-    case 'armed':     return e.armed ? 'kill' : 'damage';
-    default:          return 'pass';
-  }
+  return stateColorOf(e) === ballColorFor(world) ? 'damage' : 'kill';
 }

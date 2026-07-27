@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 
 import { CFG, UPGRADES, upgradeCost, derived, difficulty, emptyUpgrades } from '../src/config.js';
 import {
+  PALETTE, COLLECTABLES, OBSTACLES, ballColorFor, stateColorOf,
   makeCollectable, makeObstacle, makeShards, hitTest, resolveObstacle, updateEntity,
 } from '../src/entities.js';
 import { Game } from '../src/game.js';
@@ -31,6 +32,88 @@ function mkGame() {
   return g;
 }
 
+// ── the colour language ─────────────────────────────────────────────────────
+//
+// The whole point of the palette is that it is not decoration: an obstacle
+// opens to exactly the ball state whose colour it wears. These tests exist so
+// that a future tweak cannot quietly make the picture lie about the rules.
+
+const STATES = [
+  { name: 'ink',   world: { boosted: false, handsOff: false } },
+  { name: 'force', world: { boosted: true, handsOff: false } },
+  { name: 'ghost', world: { boosted: false, handsOff: true } },
+  { name: 'both',  world: { boosted: true, handsOff: true } },
+];
+
+test('the ball only ever wears a colour that opens something', () => {
+  assert.equal(ballColorFor({ boosted: false, handsOff: false }), PALETTE.ink);
+  assert.equal(ballColorFor({ boosted: true, handsOff: false }), PALETTE.force);
+  assert.equal(ballColorFor({ boosted: false, handsOff: true }), PALETTE.ghost);
+  // Both keys at once: letting go outranks a shove that has not faded yet.
+  assert.equal(ballColorFor({ boosted: true, handsOff: true }), PALETTE.ghost);
+
+  for (const s of STATES) {
+    assert.notEqual(ballColorFor(s.world), PALETTE.hazard,
+      'the ball must never be able to match a HAZARD obstacle');
+  }
+});
+
+test('the boosted ball is the same colour as the obstacle boosting opens', () => {
+  assert.equal(ballColorFor({ boosted: true, handsOff: false }), OBSTACLES.brittle.color);
+});
+
+test('the hands-off ball is the same colour as the obstacle letting go opens', () => {
+  assert.equal(ballColorFor({ boosted: false, handsOff: true }), OBSTACLES.phantom.color);
+});
+
+test('every breakable ring is FORCE, on collectables and obstacles alike', () => {
+  // Nothing to assert about the drawing itself here; what matters is that no
+  // piece carries a private colour that render.js would have to special-case.
+  for (const d of Object.values(COLLECTABLES)) assert.equal(d.color, PALETTE.ink);
+  for (const d of Object.values(OBSTACLES)) {
+    assert.ok(Object.values(PALETTE).includes(d.color), `${d.key} is off-palette`);
+  }
+});
+
+test('an obstacle opens to exactly the ball colour it is wearing', () => {
+  const cases = [];
+  for (const key of Object.keys(OBSTACLES)) {
+    const e = makeObstacle(key, 100, 100, 1, D1);
+    e.spawnT = 0;
+    if (key === 'pulsar') {
+      cases.push({ key: 'pulsar lit', e: { ...e, armed: true } });
+      cases.push({ key: 'pulsar dark', e: { ...e, armed: false } });
+    } else {
+      cases.push({ key, e });
+    }
+  }
+
+  for (const c of cases) {
+    const worn = stateColorOf(c.e);
+    for (const s of STATES) {
+      const matches = worn === ballColorFor(s.world);
+      const got = resolveObstacle(c.e, s.world);
+      assert.equal(got, matches ? 'damage' : 'kill',
+        `${c.key} (${worn}) vs a ${s.name} ball`);
+    }
+  }
+});
+
+test('the pulsar is the only piece that changes its own colour', () => {
+  const e = makeObstacle('pulsar', 100, 100, 1, D1);
+  e.armed = true;
+  assert.equal(stateColorOf(e), PALETTE.hazard, 'lit means lethal, like a slab');
+  e.armed = false;
+  assert.equal(stateColorOf(e), PALETTE.ink, 'dark means any plain ball breaks it');
+
+  for (const key of ['slab', 'rotor', 'brittle', 'phantom']) {
+    const o = makeObstacle(key, 100, 100, 1, D1);
+    const before = stateColorOf(o);
+    o.armed = !o.armed;
+    assert.equal(stateColorOf(o), before, `${key} must not shift colour`);
+  }
+});
+
 // ── obstacle resolution matrix ──────────────────────────────────────────────
 
 test('slab and rotor are lethal in every state', () => {
@@ -47,9 +130,11 @@ test('slab and rotor are lethal in every state', () => {
 test('brittle only takes damage from a boosted ball', () => {
   const e = makeObstacle('brittle', 100, 100, 1, D1);
   assert.equal(resolveObstacle(e, { boosted: true, handsOff: false }), 'damage');
-  assert.equal(resolveObstacle(e, { boosted: true, handsOff: true }), 'damage');
   assert.equal(resolveObstacle(e, { boosted: false, handsOff: true }), 'kill');
   assert.equal(resolveObstacle(e, { boosted: false, handsOff: false }), 'kill');
+  // Boosted *and* both hands off makes the ball GHOST, not FORCE — so the
+  // boost rhythm has to keep one finger down.
+  assert.equal(resolveObstacle(e, { boosted: true, handsOff: true }), 'kill');
 });
 
 test('phantom only takes damage with both fingers off the glass', () => {
@@ -59,12 +144,15 @@ test('phantom only takes damage with both fingers off the glass', () => {
   assert.equal(resolveObstacle(e, { boosted: true, handsOff: false }), 'kill');
 });
 
-test('pulsar kills while lit and breaks while dark', () => {
+test('pulsar kills while lit and breaks to a plain ball while dark', () => {
   const e = makeObstacle('pulsar', 100, 100, 1, D1);
   e.armed = true;
   assert.equal(resolveObstacle(e, { boosted: false, handsOff: false }), 'kill');
   e.armed = false;
   assert.equal(resolveObstacle(e, { boosted: false, handsOff: false }), 'damage');
+  // Dark is INK, so a teal or violet ball is the wrong key for it.
+  assert.equal(resolveObstacle(e, { boosted: true, handsOff: false }), 'kill');
+  assert.equal(resolveObstacle(e, { boosted: false, handsOff: true }), 'kill');
 });
 
 test('pulsar swaps its hit radius with its state', () => {
@@ -110,7 +198,7 @@ test('a rotor arm is lethal along its whole length, not just at the tip', () => 
 
 // ── boost arithmetic ────────────────────────────────────────────────────────
 
-test('a lift speeds the ball away and drags it back', () => {
+test('a lift speeds the ball away and never slows it down', () => {
   const g = mkGame();
   g.ball.dir = 1;
 
@@ -121,10 +209,12 @@ test('a lift speeds the ball away and drags it back', () => {
   assert.equal(g._speedMult(), CFG.boost.mult);
 
   g.input.boostDir = -1;                      // far player lifted, ball heading at them
-  assert.equal(g._speedMult(), CFG.boost.slow);
+  assert.equal(g._speedMult(), 1, 'a lift must not drag an incoming ball');
 
   g.ball.dir = -1;                            // ball turns round
   assert.equal(g._speedMult(), CFG.boost.mult);
+
+  assert.equal(CFG.boost.slow, undefined, 'the slow-down is gone entirely');
 });
 
 test('two simultaneous lifts cancel', () => {

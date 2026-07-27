@@ -25,8 +25,7 @@ export const CFG = {
 
   boost: {
     dur: 0.40,    // how long a lift keeps shoving, in seconds
-    mult: 2.35,   // ball moving away from the lifter
-    slow: 0.42,   // ball moving toward the lifter
+    mult: 2.35,   // ball moving away from the lifter; a lift never slows it down
   },
 
   launch: {

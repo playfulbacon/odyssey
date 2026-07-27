@@ -7,8 +7,8 @@
 
 import { CFG, difficulty, derived } from './config.js';
 import {
-  COLLECTABLES, OBSTACLES, makeCollectable, makeObstacle, makeShards,
-  updateEntity, hitTest, resolveObstacle,
+  PALETTE, COLLECTABLES, OBSTACLES, makeCollectable, makeObstacle, makeShards,
+  updateEntity, hitTest, resolveObstacle, stateColorOf, ballColorFor,
 } from './entities.js';
 import { sfx } from './audio.js';
 
@@ -33,7 +33,7 @@ export class Game {
     this.ball = { t: 0, dir: 1, boosted: false, trail: [], x: 0, y: 0 };
     this.shake = 0;
     this.flash = 0;
-    this.flashColor = '#ff5a5f';
+    this.flashColor = PALETTE.hazard;
     this.banner = null;
   }
 
@@ -208,11 +208,12 @@ export class Game {
   }
 
   // Boost multiplier for the current frame. A lift shoves the ball away from
-  // the lifter; if the ball is coming at them instead it drags. Two lifts cancel.
+  // the lifter and does nothing at all to a ball coming the other way. Two
+  // lifts cancel, so the ball keeps its normal pace.
   _speedMult() {
     const nd = this.input.boostDir;
     if (nd === 0) return 1;
-    return Math.sign(this.ball.dir) === nd ? CFG.boost.mult : CFG.boost.slow;
+    return Math.sign(this.ball.dir) === nd ? CFG.boost.mult : 1;
   }
 
   _stepBall(dt) {
@@ -244,7 +245,12 @@ export class Game {
       if (this._collide(p.x, p.y)) return;
     }
 
-    this.ball.trail.push({ x: this.ball.x, y: this.ball.y, b: this.ball.boosted });
+    // The trail remembers which state the ball was in, so a boost leaves a
+    // FORCE streak behind it and a hands-off glide leaves a GHOST one.
+    this.ball.trail.push({
+      x: this.ball.x, y: this.ball.y,
+      c: ballColorFor({ boosted: this.ball.boosted, handsOff: this.input.handsOff }),
+    });
     if (this.ball.trail.length > CFG.ball.trail) this.ball.trail.shift();
   }
 
@@ -284,7 +290,7 @@ export class Game {
     if (e.shield > 0) {
       e.shield = Math.max(0, e.shield - this.power);
       sfx.shield();
-      this._burst(e.x, e.y, e.color, 6, 90);
+      this._burst(e.x, e.y, PALETTE.force, 6, 90);
       if (e.shield === 0) {
         e.exposed = true;
         e.flare = 1;
@@ -299,8 +305,8 @@ export class Game {
     e.dead = true;
     const gain = Math.round(e.value * this.mult);
     this.score += gain;
-    this._float(e.x, e.y, `+${gain}`, e.color);
-    this._burst(e.x, e.y, e.color, 16, 150);
+    this._float(e.x, e.y, `+${gain}`, PALETTE.force);
+    this._burst(e.x, e.y, PALETTE.force, 16, 150);
     sfx.collect(this.mult);
     this.mult = Math.min(CFG.multCap, this.mult + 1);
     this.shake = Math.max(this.shake, 2 * this.S);
@@ -313,29 +319,29 @@ export class Game {
   _damageObstacle(e) {
     e.hp -= this.power;
     e.flare = 1;
-    this._burst(e.x, e.y, e.color, 8, 120);
+    this._burst(e.x, e.y, stateColorOf(e), 8, 120);
     if (e.hp > 0) { sfx.crack(); this.shake = Math.max(this.shake, 2.5 * this.S); return; }
 
     e.dead = true;
     const gain = Math.round(e.value * this.mult);
     this.score += gain;
-    this._float(e.x, e.y, `+${gain}`, e.color);
-    this._burst(e.x, e.y, e.color, 26, 220);
+    this._float(e.x, e.y, `+${gain}`, stateColorOf(e));
+    this._burst(e.x, e.y, stateColorOf(e), 26, 220);
     sfx.destroy();
     this.mult = Math.min(CFG.multCap, this.mult + 1);
     this.shake = Math.max(this.shake, 5 * this.S);
     this.flash = 0.35;
-    this.flashColor = e.color;
+    this.flashColor = stateColorOf(e);
   }
 
   _loseLife(e) {
     sfx.die();
-    this._burst(this.ball.x, this.ball.y, '#ff5a5f', 30, 260);
+    this._burst(this.ball.x, this.ball.y, PALETTE.hazard, 30, 260);
     this.shake = 12 * this.S;
     this.flash = 0.7;
-    this.flashColor = '#ff5a5f';
+    this.flashColor = PALETTE.hazard;
     this.mult = 1;
-    if (e) { e.dead = true; this._burst(e.x, e.y, e.color, 10, 140); }
+    if (e) { e.dead = true; this._burst(e.x, e.y, stateColorOf(e), 10, 140); }
 
     if (this.mode === 'run') {
       this.lives -= 1;
@@ -352,7 +358,7 @@ export class Game {
     for (const o of this.entities) {
       if (o.cls === 'obs' && Math.hypot(o.x - home.x, o.y - home.y) < rr) {
         o.dead = true;
-        this._burst(o.x, o.y, o.color, 6, 90);
+        this._burst(o.x, o.y, stateColorOf(o), 6, 90);
       }
     }
 

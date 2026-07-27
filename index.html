@@ -41,19 +41,30 @@
       <p>A paddle sits at each end of the screen. A line is stretched between them and the ball runs back and forth along it. <b>Slide your finger anywhere on your half</b> to move your paddle — the line swings with it. Steer the line so the ball crosses what you want to hit.</p>
 
       <h3>BOOST</h3>
-      <p><b>Lift your finger</b> to shove the ball away from you. For a moment it flies. If the ball is heading toward you instead, the same lift drags it to a crawl. If you both lift at once the two shoves cancel and the ball keeps its normal pace.</p>
+      <p><b>Lift your finger</b> to shove the ball away from you. For a moment it flies. A lift does nothing to a ball coming the other way, and if you both lift at once the two shoves cancel and the ball keeps its normal pace.</p>
       <p>While your finger is off the screen your half of the line fades — and your paddle is frozen where you left it.</p>
 
+      <h3>READING THE FIELD</h3>
+      <p>Shape tells you the family. Colour tells you the state — and the ball wears its own state, so the whole game is one rule: <b>make the ball the same colour as the thing you want to go through.</b></p>
+      <dl class="legend">
+        <dt style="color:#e9ecef">O</dt><dd><b>Collectable.</b> Break its rings, then touch the core to bank it.</dd>
+        <dt style="color:#ff5a5f">X</dt><dd><b>Obstacle.</b> A life, unless the colours agree.</dd>
+        <dt style="color:#e9ecef">■</dt><dd><b>INK</b> — nothing required. The ball is ink at normal pace.</dd>
+        <dt style="color:#57e2c0">■</dt><dd><b>FORCE</b> — the boosted ball, and every ring the ball can break.</dd>
+        <dt style="color:#b98cff">■</dt><dd><b>GHOST</b> — both fingers off the glass.</dd>
+        <dt style="color:#ff5a5f">■</dt><dd><b>HAZARD</b> — lethal right now. The ball is never this colour.</dd>
+      </dl>
+
       <h3>COLLECTABLES</h3>
-      <p>Each one wears a shield. Every pass of the ball strips <b>ball power</b> from it. Once the shield is gone the core is exposed — touch it again to bank it.</p>
+      <p>Every collectable is an <b>O</b> ringed in FORCE teal. Each pass of the ball strips one ring's worth of <b>ball power</b>. When the last ring goes the core fills in — touch it again to bank it.</p>
 
       <h3>OBSTACLES</h3>
-      <p>Touch one the wrong way and you lose a life. Some can be broken instead, and they pay far better than collectables:</p>
+      <p>Every obstacle is an <b>X</b>, wearing the colour of the ball that can get through it. The breakable ones pay far better than any collectable:</p>
       <ul class="ticks">
-        <li><b>BRITTLE</b> — only takes damage from a <i>boosted</i> ball.</li>
-        <li><b>PHANTOM</b> — only takes damage while <i>both</i> fingers are off the screen.</li>
-        <li><b>PULSAR</b> — deadly while lit, breakable while dark.</li>
-        <li><b>SLAB</b> and <b>ROTOR</b> — no way through. Just don't.</li>
+        <li><b>BRITTLE</b> is FORCE teal — hit it with the teal, boosted ball.</li>
+        <li><b>PHANTOM</b> is GHOST violet — hit it with both of you off the glass.</li>
+        <li><b>PULSAR</b> is the one that changes instead of you: HAZARD red while lit, INK while dark, and any ball breaks it while it is dark.</li>
+        <li><b>SLAB</b> and <b>ROTOR</b> are HAZARD red and stay that way. Nothing gets through.</li>
       </ul>
 
       <h3>LAUNCHING</h3>
@@ -78,6 +89,13 @@
     <div class="panel scroll">
       <h2>PLAYGROUND</h2>
       <p class="lede">No clock. No target. Endless lives. Pick a piece and learn it.</p>
+      <dl class="legend">
+        <dt style="color:#e9ecef">O</dt><dd>collectable — break the rings, touch the core</dd>
+        <dt style="color:#ff5a5f">X</dt><dd>obstacle — only opens to a ball of its own colour</dd>
+        <dt style="color:#57e2c0">■</dt><dd>FORCE — the boosted ball, and every breakable ring</dd>
+        <dt style="color:#b98cff">■</dt><dd>GHOST — both fingers off the glass</dd>
+        <dt style="color:#ff5a5f">■</dt><dd>HAZARD — lethal right now</dd>
+      </dl>
       <h3 class="sec">COLLECTABLES</h3>
       <div class="cards" id="pg-collectables"></div>
       <h3 class="sec">OBSTACLES</h3>

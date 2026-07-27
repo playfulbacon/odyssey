@@ -18,42 +18,71 @@ of string through the field.
 paddle never teleports to a new touch, because you will be lifting your finger
 constantly.
 
-**Lift** your finger to shove the ball away from you. For a moment it flies.
-If the ball is coming toward you, the same lift drags it to a crawl. Lift at the
-same time as your partner and the two shoves cancel out. While your finger is
-off the glass your half of the line fades — and your paddle is frozen where you
-left it.
+**Lift** your finger to shove the ball away from you. For a moment it flies. A
+lift does nothing to a ball coming the other way, and if you both lift at once
+the two shoves cancel out. While your finger is off the glass your half of the
+line fades — and your paddle is frozen where you left it.
+
+## Reading the field
+
+Shape tells you the family, colour tells you the state, and the ball wears its
+own state — so the whole game reduces to one rule: **make the ball the same
+colour as the thing you want to go through.**
+
+That is not a label stuck on the mechanic. `resolveObstacle()` is literally a
+colour comparison between what the obstacle is wearing and what the ball is
+wearing; there is no second rule hiding behind it.
+
+| | |
+|---|---|
+| **O** | collectable — break its rings, then touch the core |
+| **X** | obstacle — a life, unless the colours agree |
+| **INK** | nothing required. The ball is ink at normal pace. |
+| **FORCE** teal | the boosted ball — and every ring the ball can break, on collectables and obstacles alike |
+| **GHOST** violet | both fingers off the glass |
+| **HAZARD** red | lethal right now. The ball is never this colour, so red never opens. |
+
+The ball holds one key at a time, and GHOST outranks FORCE: letting go with both
+hands is a deliberate choice and should not be masked by a shove that has not
+faded yet. It also means the boost rhythm has to keep one finger down.
 
 ## Pieces
 
 **Collectables** wear a shield. Every pass of the ball strips *ball power* off
 it. Once the shield is gone the core is exposed; touch it again to bank it.
 
-| | shield | pays | behaviour |
+All four are an **O** ringed in FORCE teal; they differ by structure and motion,
+never by a colour that means nothing.
+
+| | rings | pays | behaviour |
 |---|---|---|---|
 | **ORB** | 1 | 100 | Static. The plain one. |
-| **DRIFTER** | 2 | 170 | Wanders, bounces off the walls. |
-| **SPLITTER** | 3 | 90 | Bursts into three loose shards when cracked. |
-| **RUNNER** | 1 | 240 | Fast, thin-skinned, times out. |
+| **DRIFTER** | 2 | 170 | Wanders, bounces off the walls; a stub shows where it came from. |
+| **SPLITTER** | 3 | 90 | A double O. Bursts into three loose shards when cracked. |
+| **RUNNER** | 1 | 240 | Small, fast, with a draining arc for its patience. |
 
 **Obstacles** cost a life on the wrong kind of contact. The breakable ones have
 armour and pay far more than any collectable, because getting them wrong is
 expensive.
 
-| | armour | pays | how you get through |
-|---|---|---|---|
-| **SLAB** | — | — | You don't. Move the line around it. |
-| **BRITTLE** | 3 | 430 | Only takes damage from a *boosted* ball. |
-| **PHANTOM** | 2 | 660 | Only takes damage while *both* fingers are off the screen. |
-| **PULSAR** | 2 | 320 | Lethal while lit, breakable while dark. |
-| **ROTOR** | — | — | Lethal hub and lethal sweeping arms. |
+| | wears | armour | pays | opens to |
+|---|---|---|---|---|
+| **SLAB** | HAZARD | — | — | nothing. Move the line around it. |
+| **ROTOR** | HAZARD | — | — | nothing, and it sweeps toward you. |
+| **BRITTLE** | FORCE | 3 | 430 | the teal, boosted ball. |
+| **PHANTOM** | GHOST | 2 | 660 | the violet ball — both fingers off. |
+| **PULSAR** | HAZARD ⇄ INK | 2 | 320 | a plain ball, but only while it is dark. |
+
+The PULSAR is the one that changes colour instead of asking you to: red and wide
+while lit, ink and small while dark.
 
 Everything fades in behind a dashed telegraph ring and is inert until it lands.
 
-Breaking a BRITTLE takes three boosted passes, and a pass at normal pace kills —
-so the co-op rhythm it wants is the two of you *alternating* lifts, each of you
-shoving as the ball runs away from you, keeping it boosted in both directions.
-A PHANTOM wants the opposite: line it up, then both of you let go and coast.
+Breaking a BRITTLE takes three teal passes, and arriving any other colour kills —
+so the co-op rhythm it wants is the two of you *alternating* lifts, each shoving
+as the ball runs away from you, keeping it teal in both directions. Because one
+of you is always still holding, the ball never slips to GHOST mid-rhythm. A
+PHANTOM wants the exact opposite: line it up, then both let go and coast.
 
 **Launching.** At the start of a run, and after every lost life, both players
 hold their half until the bar fills. A lost ball comes back on the paddle of the
@@ -136,8 +165,11 @@ meta-game, so values can be poked from the console mid-play.
 
 ## Known rough edges
 
-- The menus, shop and results screens read one way up. Only the in-game HUD and
-  prompts are drawn for both players.
+- The menus, shop and results screens read one way up. The in-game HUD is a
+  single strip stood on its side against the left edge, opposite the pause
+  button, so it is square to neither player rather than upside down for one.
+  During the launch ritual each paddle also reports its own player's hold, so
+  neither of you has to read a prompt meant for the other.
 - Balance is a first pass. Run 1 is deliberately gentle; the later curve has had
   no real playtesting.
 - No haptics, and audio is a handful of synthesised blips.

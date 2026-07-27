@@ -1,21 +1,19 @@
 // All drawing. Minimal palette, thin strokes, no textures.
 //
-// The HUD and every in-game prompt is drawn twice around the middle of the
-// screen — once for each player — with the far copy rotated 180°, because the
-// two of them are sitting on opposite sides of the phone.
+// The visual language is documented at the top of entities.js. In short:
+//   O = collectable, X = obstacle;
+//   INK = no condition, FORCE = needs the boosted ball (and marks every ring
+//   the ball can break), GHOST = needs both fingers off, HAZARD = lethal now.
+// The ball wears whichever of those states it is in, so "match the colour" is
+// the only rule a player has to hold in their head.
 
 import { CFG } from './config.js';
+import { PALETTE, stateColorOf, ballColorFor } from './entities.js';
 
-const INK = '#e9ecef';
+const { ink: INK, force: FORCE, ghost: GHOST, hazard: HAZARD } = PALETTE;
 const DIM = '#6d737b';
 const BG = '#08090b';
-
-function alpha(ctx, a, fn) {
-  const prev = ctx.globalAlpha;
-  ctx.globalAlpha = prev * a;
-  fn();
-  ctx.globalAlpha = prev;
-}
+const TAU = Math.PI * 2;
 
 function text(ctx, str, x, y, o = {}) {
   const size = o.size || 12;
@@ -41,18 +39,51 @@ const fmtTime = (s) => {
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 };
 
+// ── the two family glyphs ───────────────────────────────────────────────────
+
+function pathO(ctx, x, y, r) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, TAU);
+}
+
+function pathX(ctx, x, y, r) {
+  const k = r * 0.72;
+  ctx.beginPath();
+  ctx.moveTo(x - k, y - k); ctx.lineTo(x + k, y + k);
+  ctx.moveTo(x + k, y - k); ctx.lineTo(x - k, y + k);
+}
+
+// A ring of segments, one per point of whatever is left. Always FORCE, because
+// a segmented ring means exactly one thing: the ball can break this.
+function segRing(ctx, x, y, r, total, left, S, width = 2.5) {
+  if (!total) return;
+  const baseA = ctx.globalAlpha;
+  const gap = total > 1 ? 0.18 : 0;
+  const span = TAU / total - gap;
+  ctx.lineWidth = width * S;
+  ctx.lineCap = 'butt';
+  ctx.strokeStyle = FORCE;
+  for (let i = 0; i < total; i++) {
+    const a0 = -Math.PI / 2 + i * (TAU / total) + gap / 2;
+    ctx.globalAlpha = baseA * (i < left ? 0.95 : 0.12);
+    ctx.beginPath();
+    ctx.arc(x, y, r, a0, a0 + span);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = baseA;
+}
+
 // ── entry point ─────────────────────────────────────────────────────────────
 
 export function render(ctx, g) {
-  const { W, H, S } = g;
+  const { W, H } = g;
 
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, W, H);
   if (g.mode === 'idle') return;
 
-  // HUD goes down first so the line and the ball sweep over the top of it
-  // rather than fighting it for the middle of the screen.
-  drawFaces(ctx, g);
+  // The HUD goes down first so the line and the ball sweep over it.
+  drawHud(ctx, g);
 
   ctx.save();
   if (g.shake > 0.15) {
@@ -76,11 +107,21 @@ export function render(ctx, g) {
   ctx.restore();
 
   if (g.flash > 0) {
-    alpha(ctx, Math.min(1, g.flash) * 0.22, () => {
-      ctx.fillStyle = g.flashColor;
-      ctx.fillRect(0, 0, W, H);
-    });
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, g.flash) * 0.22;
+    ctx.fillStyle = g.flashColor;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
   }
+}
+
+// What state is the ball in, and therefore what can it get through? Same call
+// the simulation makes, so the ball can never be drawn a colour it does not
+// actually open.
+function ballKeys(g) {
+  const boosted = g.ball.boosted && g.phase === 'play';
+  const handsOff = g.input.handsOff && g.phase === 'play';
+  return { boosted, handsOff, color: ballColorFor({ boosted, handsOff }) };
 }
 
 // ── field furniture ─────────────────────────────────────────────────────────
@@ -94,19 +135,18 @@ function drawTerritory(ctx, g) {
   ctx.beginPath();
   ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2);
   ctx.stroke();
-  ctx.setLineDash([]);
   ctx.restore();
 }
 
-// The line is drawn as two halves so each player can see, at a glance, whether
-// their own finger is on the glass.
+// Two halves, so each player can see at a glance whether their own finger is
+// down. A released half fades to GHOST — the state it is moving the ball toward.
 function drawLine(ctx, g, A, B) {
   const M = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
   const seg = (P, Q, on) => {
     ctx.save();
-    ctx.globalAlpha = on ? 0.92 : 0.2;
-    ctx.strokeStyle = on ? INK : '#9aa1aa';
-    ctx.lineWidth = (on ? 1.4 : 1) * g.S;
+    ctx.globalAlpha = on ? 0.92 : 0.3;
+    ctx.strokeStyle = on ? INK : GHOST;
+    ctx.lineWidth = (on ? 1.4 : 1.1) * g.S;
     ctx.beginPath();
     ctx.moveTo(P.x, P.y); ctx.lineTo(Q.x, Q.y);
     ctx.stroke();
@@ -119,22 +159,35 @@ function drawLine(ctx, g, A, B) {
 function drawPaddle(ctx, g, P, p, inward) {
   const w = g.paddleW, h = g.paddleH, S = g.S;
   ctx.save();
-  ctx.globalAlpha = p.touching ? 1 : 0.42;
-  ctx.fillStyle = INK;
+  ctx.globalAlpha = p.touching ? 1 : 0.4;
+  ctx.fillStyle = p.touching ? INK : GHOST;
   roundRect(ctx, P.x - w / 2, P.y - h / 2, w, h, CFG.paddle.round * S);
   ctx.fill();
 
-  // A short flare while the lift is still shoving.
+  const y = P.y - inward * (h / 2 + 5 * S);
+
+  // A FORCE flare while the lift is still shoving.
   if (p.boostT > 0) {
     const k = p.boostT / Math.max(0.001, g.input.boostDur);
-    ctx.globalAlpha = k * 0.8;
-    ctx.strokeStyle = '#57e2c0';
-    ctx.lineWidth = 1.5 * S;
+    ctx.globalAlpha = k * 0.85;
+    ctx.strokeStyle = FORCE;
+    ctx.lineWidth = 1.6 * S;
     ctx.beginPath();
-    const y = P.y + inward * -1 * (h / 2 + 5 * S);
-    ctx.moveTo(P.x - w / 2 * k, y);
-    ctx.lineTo(P.x + w / 2 * k, y);
+    ctx.moveTo(P.x - (w / 2) * k, y);
+    ctx.lineTo(P.x + (w / 2) * k, y);
     ctx.stroke();
+  } else if (g.phase === 'launch') {
+    // During the launch ritual each paddle reports its own player's hold, so
+    // neither of them has to read text meant for the other.
+    ctx.globalAlpha = p.touching ? 0.9 : 0.3;
+    ctx.strokeStyle = p.touching ? FORCE : DIM;
+    ctx.lineWidth = 1.6 * S;
+    ctx.setLineDash(p.touching ? [] : [3 * S, 4 * S]);
+    ctx.beginPath();
+    ctx.moveTo(P.x - w / 2, y);
+    ctx.lineTo(P.x + w / 2, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
   ctx.restore();
 }
@@ -142,7 +195,8 @@ function drawPaddle(ctx, g, P, p, inward) {
 function drawBall(ctx, g, A, B) {
   const S = g.S, r = g.ballR;
   const t = g.ball.t;
-  let x = A.x + (B.x - A.x) * t;
+  const key = ballKeys(g);
+  const x = A.x + (B.x - A.x) * t;
   let y = A.y + (B.y - A.y) * t;
 
   // While waiting to launch, perch it on top of the paddle rather than inside.
@@ -154,35 +208,25 @@ function drawBall(ctx, g, A, B) {
     const p = g.ball.trail[i];
     const k = (i + 1) / n;
     ctx.globalAlpha = k * 0.3;
-    ctx.fillStyle = p.b ? '#57e2c0' : INK;
+    ctx.fillStyle = p.c || INK;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, r * k * 0.75, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, r * k * 0.75, 0, TAU);
     ctx.fill();
   }
-  ctx.globalAlpha = 1;
 
-  ctx.fillStyle = g.ball.boosted ? '#57e2c0' : INK;
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = key.color;
+  pathO(ctx, x, y, r);
   ctx.fill();
 
-  if (g.ball.boosted) {
-    ctx.strokeStyle = '#57e2c0';
-    ctx.globalAlpha = 0.55;
-    ctx.lineWidth = 1.2 * S;
-    ctx.beginPath();
-    ctx.arc(x, y, r + 4 * S, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-
-  // Both hands off — the state the PHANTOM wants. Mark it on the ball.
-  if (g.input.handsOff && g.phase === 'play') {
-    ctx.globalAlpha = 0.5;
-    ctx.strokeStyle = '#b98cff';
-    ctx.lineWidth = 1 * S;
-    ctx.setLineDash([2 * S, 3 * S]);
-    ctx.beginPath();
-    ctx.arc(x, y, r + 7 * S, 0, Math.PI * 2);
+  // A halo in the ball's own colour means "charged" — never a second colour,
+  // because the ball only ever holds one key at a time.
+  if (key.boosted || key.handsOff) {
+    ctx.globalAlpha = 0.58;
+    ctx.strokeStyle = key.color;
+    ctx.lineWidth = 1.3 * S;
+    ctx.setLineDash(key.handsOff && !key.boosted ? [2.5 * S, 3 * S] : []);
+    pathO(ctx, x, y, r + 4 * S);
     ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -203,165 +247,165 @@ function drawEntity(ctx, g, e) {
   if (e.cls === 'col') drawCollectable(ctx, g, e);
   else drawObstacle(ctx, g, e);
 
-  // Telegraph ring: a piece is inert until this collapses onto it.
+  // Telegraph: a piece is inert until this collapses onto it. It takes the
+  // shape of whatever is landing, so a slab never announces itself as a circle.
   if (e.spawnT > 0) {
     const k = Math.min(1, e.spawnT / 1.2);
     ctx.globalAlpha = 0.5 * (1 - k * 0.4);
-    ctx.strokeStyle = e.color;
+    ctx.strokeStyle = stateColorOf(e);
     ctx.lineWidth = 1 * S;
     ctx.setLineDash([3 * S, 4 * S]);
-    ctx.beginPath();
-    ctx.arc(e.x, e.y, (e.r || 18 * S) * (1 + k * 1.5), 0, Math.PI * 2);
+    if (e.type === 'slab') {
+      const pad = 14 * S * k;
+      roundRect(ctx, e.x - e.w / 2 - pad, e.y - e.h / 2 - pad, e.w + pad * 2, e.h + pad * 2, 3 * S);
+    } else {
+      pathO(ctx, e.x, e.y, (e.r || 18 * S) * (1 + k * 1.5));
+    }
     ctx.stroke();
     ctx.setLineDash([]);
   }
   ctx.restore();
 }
 
-function drawShield(ctx, g, e) {
-  if (!e.shieldMax) return;
-  const S = g.S;
-  const n = e.shieldMax;
-  const gap = 0.16;
-  const span = (Math.PI * 2) / n - gap;
-  const baseA = ctx.globalAlpha;
-  ctx.lineWidth = 2.4 * S;
-  ctx.lineCap = 'butt';
-  for (let i = 0; i < n; i++) {
-    const a0 = -Math.PI / 2 + i * ((Math.PI * 2) / n) + gap / 2;
-    ctx.globalAlpha = baseA * (i < e.shield ? 0.95 : 0.13);
-    ctx.strokeStyle = e.color;
-    ctx.beginPath();
-    ctx.arc(e.x, e.y, e.r, a0, a0 + span);
-    ctx.stroke();
-  }
-  ctx.globalAlpha = baseA;
-}
-
-function poly(ctx, x, y, r, sides, rot) {
-  ctx.beginPath();
-  for (let i = 0; i < sides; i++) {
-    const a = rot + (i / sides) * Math.PI * 2;
-    const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
-    i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
-  }
-  ctx.closePath();
-}
-
 function drawCollectable(ctx, g, e) {
   const S = g.S;
   const baseA = ctx.globalAlpha;
-  drawShield(ctx, g, e);
-  ctx.globalAlpha = baseA;
+
+  segRing(ctx, e.x, e.y, e.r, e.shieldMax, e.shield, S, 2.5);
 
   const cr = e.r * 0.44;
-  ctx.strokeStyle = e.color;
-  ctx.fillStyle = e.color;
-  ctx.lineWidth = 1.4 * S;
-
-  const shape = (r) => {
-    if (e.type === 'splitter') poly(ctx, e.x, e.y, r, 6, Math.PI / 6);
-    else if (e.type === 'runner') poly(ctx, e.x, e.y, r * 1.15, 4, Math.PI / 4);
-    else { ctx.beginPath(); ctx.arc(e.x, e.y, r, 0, Math.PI * 2); }
-  };
+  ctx.strokeStyle = INK;
+  ctx.fillStyle = INK;
+  ctx.lineWidth = 1.5 * S;
 
   if (e.exposed) {
+    // Open. Filled O, with a FORCE pulse going out — come and take it.
     const pulse = 1 + Math.sin(e.age * 9) * 0.12;
-    shape(cr * pulse);
+    pathO(ctx, e.x, e.y, cr * pulse);
     ctx.fill();
-    ctx.globalAlpha = baseA * 0.35;
-    ctx.beginPath();
-    ctx.arc(e.x, e.y, e.r * (0.6 + ((e.age * 1.6) % 1) * 0.6), 0, Math.PI * 2);
+    ctx.globalAlpha = baseA * 0.4;
+    ctx.strokeStyle = FORCE;
+    ctx.lineWidth = 1.2 * S;
+    pathO(ctx, e.x, e.y, e.r * (0.6 + ((e.age * 1.6) % 1) * 0.6));
     ctx.stroke();
+    ctx.globalAlpha = baseA;
+    ctx.strokeStyle = INK;
   } else {
-    shape(cr);
+    pathO(ctx, e.x, e.y, cr);
     ctx.stroke();
+  }
+
+  // A second O inside says "there is more in here".
+  if (e.type === 'splitter') {
+    ctx.globalAlpha = baseA * 0.7;
+    ctx.lineWidth = 1.2 * S;
+    pathO(ctx, e.x, e.y, cr * 0.5);
+    ctx.stroke();
+    ctx.globalAlpha = baseA;
+  }
+
+  // The runner's patience, draining away.
+  if (e.type === 'runner' && e.ttl !== Infinity) {
+    const k = Math.max(0, Math.min(1, e.ttl / 9));
+    ctx.globalAlpha = baseA * 0.4;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 1.2 * S;
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, e.r * 1.5, -Math.PI / 2, -Math.PI / 2 + TAU * k);
+    ctx.stroke();
+    ctx.globalAlpha = baseA;
   }
 
   if (e.type === 'drifter' && (e.vx || e.vy)) {
     const m = Math.hypot(e.vx, e.vy) || 1;
-    ctx.globalAlpha = baseA * 0.3;
+    ctx.globalAlpha = baseA * 0.35;
     ctx.beginPath();
     ctx.moveTo(e.x, e.y);
     ctx.lineTo(e.x - (e.vx / m) * e.r * 1.7, e.y - (e.vy / m) * e.r * 1.7);
     ctx.stroke();
+    ctx.globalAlpha = baseA;
   }
 }
 
 function drawObstacle(ctx, g, e) {
   const S = g.S;
   const baseA = ctx.globalAlpha;
-  ctx.strokeStyle = e.color;
-  ctx.fillStyle = e.color;
-  ctx.lineWidth = 1.5 * S;
+  const col = stateColorOf(e);
 
   if (e.flare) ctx.globalAlpha = Math.min(1, baseA + e.flare * 0.6);
+  ctx.strokeStyle = col;
+  ctx.fillStyle = col;
+  ctx.lineWidth = 1.6 * S;
 
   switch (e.type) {
     case 'slab': {
       const x = e.x - e.w / 2, y = e.y - e.h / 2;
-      ctx.globalAlpha = baseA * 0.14;
+      const k = Math.min(e.w, e.h) * 0.34;
+      ctx.globalAlpha = baseA * 0.12;
       roundRect(ctx, x, y, e.w, e.h, 2 * S); ctx.fill();
-      ctx.globalAlpha = baseA * 0.9;
+      ctx.globalAlpha = baseA * 0.85;
       roundRect(ctx, x, y, e.w, e.h, 2 * S); ctx.stroke();
-      ctx.globalAlpha = baseA * 0.35;
-      ctx.lineWidth = 1 * S;
-      ctx.save();
-      ctx.beginPath(); ctx.rect(x, y, e.w, e.h); ctx.clip();
-      for (let i = -e.h; i < e.w + e.h; i += 7 * S) {
-        ctx.beginPath();
-        ctx.moveTo(x + i, y + e.h);
-        ctx.lineTo(x + i + e.h, y);
+      // Repeat the X along the body so a long slab still reads as an obstacle.
+      ctx.globalAlpha = baseA;
+      ctx.lineWidth = 1.5 * S;
+      const along = e.horiz ? e.w : e.h;
+      const n = Math.max(1, Math.round(along / (k * 3.4)));
+      for (let i = 0; i < n; i++) {
+        const f = (i + 0.5) / n - 0.5;
+        pathX(ctx, e.x + (e.horiz ? f * e.w : 0), e.y + (e.horiz ? 0 : f * e.h), k);
         ctx.stroke();
       }
-      ctx.restore();
       break;
     }
 
     case 'brittle': {
-      drawArmour(ctx, g, e);
-      ctx.globalAlpha = baseA * 0.16;
-      ctx.beginPath(); ctx.arc(e.x, e.y, e.r * 0.72, 0, Math.PI * 2); ctx.fill();
+      segRing(ctx, e.x, e.y, e.r, e.hpMax, e.hp, S, 2.7);
+      ctx.globalAlpha = baseA * 0.14;
+      pathO(ctx, e.x, e.y, e.r * 0.72); ctx.fill();
       ctx.globalAlpha = baseA;
-      ctx.lineWidth = 1.4 * S;
-      const k = e.r * 0.34;
-      ctx.beginPath();
-      ctx.moveTo(e.x - k, e.y - k); ctx.lineTo(e.x + k, e.y + k);
-      ctx.moveTo(e.x + k, e.y - k); ctx.lineTo(e.x - k, e.y + k);
-      ctx.stroke();
+      pathX(ctx, e.x, e.y, e.r * 0.46); ctx.stroke();
       break;
     }
 
     case 'phantom': {
       const open = g.input.handsOff && g.phase === 'play';
-      drawArmour(ctx, g, e);
-      ctx.globalAlpha = baseA * (open ? 0.3 : 0.08);
-      ctx.beginPath(); ctx.arc(e.x, e.y, e.r * 0.7, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = baseA * (open ? 1 : 0.5);
+      segRing(ctx, e.x, e.y, e.r, e.hpMax, e.hp, S, 2.7);
+      ctx.globalAlpha = baseA * (open ? 0.26 : 0.07);
+      pathO(ctx, e.x, e.y, e.r * 0.7); ctx.fill();
+      // Dashed while it is out of reach, solid the moment you both let go.
+      ctx.globalAlpha = baseA * (open ? 1 : 0.45);
       ctx.setLineDash(open ? [] : [3 * S, 4 * S]);
       ctx.lineWidth = 1.4 * S;
-      ctx.beginPath(); ctx.arc(e.x, e.y, e.r * 0.7, 0, Math.PI * 2); ctx.stroke();
+      pathO(ctx, e.x, e.y, e.r * 0.7); ctx.stroke();
       ctx.setLineDash([]);
+      ctx.globalAlpha = baseA * (open ? 1 : 0.55);
+      ctx.lineWidth = 1.6 * S;
+      pathX(ctx, e.x, e.y, e.r * 0.4); ctx.stroke();
       break;
     }
 
     case 'pulsar': {
-      drawArmour(ctx, g, e, e.rBig + 5 * S);
+      segRing(ctx, e.x, e.y, e.rBig + 5 * S, e.hpMax, e.hp, S, 2.7);
       const flick = e.warn && Math.floor(e.age * 18) % 2 === 0;
-      if (e.armed || flick) {
-        ctx.globalAlpha = baseA * 0.28;
-        ctx.beginPath(); ctx.arc(e.x, e.y, e.rBig, 0, Math.PI * 2); ctx.fill();
+      const lit = e.armed || flick;
+      ctx.strokeStyle = lit ? HAZARD : INK;
+      ctx.fillStyle = lit ? HAZARD : INK;
+      if (lit) {
+        ctx.globalAlpha = baseA * 0.26;
+        pathO(ctx, e.x, e.y, e.rBig); ctx.fill();
         ctx.globalAlpha = baseA;
         ctx.lineWidth = 1.8 * S;
-        ctx.beginPath(); ctx.arc(e.x, e.y, e.rBig, 0, Math.PI * 2); ctx.stroke();
+        pathO(ctx, e.x, e.y, e.rBig); ctx.stroke();
+        pathX(ctx, e.x, e.y, e.rBig * 0.42); ctx.stroke();
       } else {
-        ctx.globalAlpha = baseA * 0.55;
-        ctx.beginPath(); ctx.arc(e.x, e.y, e.rSmall, 0, Math.PI * 2); ctx.fill();
-        ctx.globalAlpha = baseA * 0.22;
+        ctx.globalAlpha = baseA * 0.2;
         ctx.setLineDash([2 * S, 5 * S]);
         ctx.lineWidth = 1 * S;
-        ctx.beginPath(); ctx.arc(e.x, e.y, e.rBig, 0, Math.PI * 2); ctx.stroke();
+        pathO(ctx, e.x, e.y, e.rBig); ctx.stroke();
         ctx.setLineDash([]);
+        ctx.globalAlpha = baseA;
+        ctx.lineWidth = 1.6 * S;
+        pathX(ctx, e.x, e.y, e.rSmall * 0.9); ctx.stroke();
       }
       break;
     }
@@ -377,35 +421,19 @@ function drawObstacle(ctx, g, e) {
         ctx.beginPath();
         ctx.moveTo(e.x, e.y); ctx.lineTo(nx, ny);
         ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(nx, ny, e.thick * 1.9, 0, Math.PI * 2);
-        ctx.fill();
+        // An X on each tip: the arms are as lethal as the hub.
+        ctx.lineWidth = 1.5 * S;
+        pathX(ctx, nx, ny, e.thick * 2.1); ctx.stroke();
+        ctx.lineWidth = e.thick * 2;
       }
-      ctx.beginPath(); ctx.arc(e.x, e.y, e.hubR, 0, Math.PI * 2); ctx.fill();
       ctx.lineCap = 'butt';
+      ctx.globalAlpha = baseA * 0.16;
+      pathO(ctx, e.x, e.y, e.hubR * 2); ctx.fill();
+      ctx.globalAlpha = baseA;
+      ctx.lineWidth = 1.7 * S;
+      pathX(ctx, e.x, e.y, e.hubR * 1.5); ctx.stroke();
       break;
     }
-  }
-  ctx.globalAlpha = baseA;
-}
-
-// Segmented ring showing how much armour is left on a breakable obstacle.
-function drawArmour(ctx, g, e, radius) {
-  if (!e.hpMax) return;
-  const S = g.S;
-  const r = radius || e.r;
-  const n = e.hpMax;
-  const gap = 0.2;
-  const span = (Math.PI * 2) / n - gap;
-  const baseA = ctx.globalAlpha;
-  ctx.lineWidth = 2.6 * S;
-  for (let i = 0; i < n; i++) {
-    const a0 = -Math.PI / 2 + i * ((Math.PI * 2) / n) + gap / 2;
-    ctx.globalAlpha = baseA * (i < e.hp ? 0.95 : 0.12);
-    ctx.strokeStyle = e.color;
-    ctx.beginPath();
-    ctx.arc(e.x, e.y, r, a0, a0 + span);
-    ctx.stroke();
   }
   ctx.globalAlpha = baseA;
 }
@@ -423,99 +451,69 @@ function drawParticles(ctx, g) {
 
 function drawFloaters(ctx, g) {
   for (const f of g.floaters) {
-    const k = f.life / f.max;
-    // Drawn both ways up so neither player has to read it upside down.
-    text(ctx, f.text, f.x, f.y, { size: 11 * g.S, color: f.color, alpha: k, ls: 0.5 });
-    ctx.save();
-    ctx.translate(f.x, f.y + 14 * g.S);
-    ctx.rotate(Math.PI);
-    text(ctx, f.text, 0, 0, { size: 11 * g.S, color: f.color, alpha: k * 0.45, ls: 0.5 });
-    ctx.restore();
+    text(ctx, f.text, f.x, f.y, { size: 11 * g.S, color: f.color, alpha: f.life / f.max, ls: 0.5 });
   }
 }
 
-// ── HUD, drawn once per player ──────────────────────────────────────────────
+// ── HUD ─────────────────────────────────────────────────────────────────────
+//
+// One instance only, standing on the left edge opposite the pause button and
+// turned side-on, so it sits square to neither player and upside down for
+// neither of them.
 
-function drawFaces(ctx, g) {
+function drawHud(ctx, g) {
   const S = g.S;
-  const gap = 7 * S;
-  const paint = (who) => (g.phase === 'launch' ? drawLaunchFace(ctx, g, who) : drawHudFace(ctx, g));
-
   ctx.save();
-  ctx.translate(g.W / 2, g.H / 2 + gap);
-  paint('a');
-  ctx.restore();
-
-  ctx.save();
-  ctx.translate(g.W / 2, g.H / 2 - gap);
-  ctx.rotate(Math.PI);
-  paint('b');
+  ctx.translate(24 * S, g.H / 2);
+  ctx.rotate(-Math.PI / 2);   // local +x runs up the screen, local +y runs right
+  if (g.phase === 'launch') drawLaunchStrip(ctx, g);
+  else drawRunStrip(ctx, g);
   ctx.restore();
 }
 
-function drawHudFace(ctx, g) {
+function drawRunStrip(ctx, g) {
   const S = g.S;
   const endless = g.mode === 'playground';
 
-  const head = endless ? `${g.score}` : `${g.score} / ${g.target}`;
-  text(ctx, head, 0, 12 * S, { size: 13 * S, color: INK, alpha: 0.7, ls: 0.5 });
+  text(ctx, endless ? `${g.score}` : `${g.score} / ${g.target}`, 0, -3 * S,
+    { size: 13 * S, color: INK, alpha: 0.85, ls: 0.5 });
 
-  const bits = [`x${g.mult}`, endless ? 'PLAYGROUND' : fmtTime(g.timeLeft)];
-  text(ctx, bits.join('   '), 0, 26 * S, { size: 9 * S, color: DIM, alpha: 0.85, ls: 1.2 });
+  text(ctx, `x${g.mult}   ${endless ? 'PLAYGROUND' : fmtTime(g.timeLeft)}`, 0, 9 * S,
+    { size: 9 * S, color: DIM, alpha: 0.95, ls: 1.2 });
 
-  // score progress
-  if (!endless) {
-    const w = 110 * S, y = 33 * S;
-    ctx.save();
-    ctx.globalAlpha = 0.25; ctx.fillStyle = INK;
-    ctx.fillRect(-w / 2, y, w, 1.5 * S);
-    ctx.globalAlpha = 0.9; ctx.fillStyle = '#57e2c0';
-    ctx.fillRect(-w / 2, y, w * Math.min(1, g.score / g.target), 1.5 * S);
-    ctx.restore();
+  if (endless) return;
 
-    // lives
-    const n = g.livesMax, r = 2.2 * S, sp = 9 * S;
-    for (let i = 0; i < n; i++) {
-      ctx.beginPath();
-      ctx.arc((i - (n - 1) / 2) * sp, 42 * S, r, 0, Math.PI * 2);
-      ctx.globalAlpha = i < g.lives ? 0.9 : 0.2;
-      ctx.fillStyle = i < g.lives ? '#ff5a5f' : INK;
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-  }
-}
-
-function drawLaunchFace(ctx, g, who) {
-  const S = g.S;
-  if (g.banner) {
-    text(ctx, g.banner, 0, 4 * S, { size: 9 * S, color: '#ff5a5f', alpha: 0.9, ls: 2.4 });
-  }
-  text(ctx, 'BOTH HOLD', 0, 20 * S, { size: 13 * S, color: INK, alpha: 0.9, ls: 2.4 });
-
-  const w = 120 * S, y = 30 * S, h = 3 * S;
-  const k = g.holdT / CFG.launch.hold;
+  const w = 100 * S;
   ctx.save();
   ctx.globalAlpha = 0.22; ctx.fillStyle = INK;
-  ctx.fillRect(-w / 2, y, w, h);
-  ctx.globalAlpha = 1; ctx.fillStyle = '#57e2c0';
-  ctx.fillRect(-w / 2, y, w * k, h);
+  ctx.fillRect(-w / 2, 14 * S, w, 1.6 * S);
+  ctx.globalAlpha = 0.95; ctx.fillStyle = FORCE;
+  ctx.fillRect(-w / 2, 14 * S, w * Math.min(1, g.score / g.target), 1.6 * S);
   ctx.restore();
 
-  // Which side is still missing.
-  const mark = (x, on, label) => {
-    ctx.save();
-    ctx.globalAlpha = on ? 0.9 : 0.25;
-    ctx.fillStyle = on ? '#57e2c0' : INK;
+  const n = g.livesMax, sp = 9 * S;
+  for (let i = 0; i < n; i++) {
+    ctx.globalAlpha = i < g.lives ? 0.9 : 0.18;
+    ctx.fillStyle = i < g.lives ? HAZARD : INK;
     ctx.beginPath();
-    ctx.arc(x, 41 * S, 2.6 * S, 0, Math.PI * 2);
+    ctx.arc((i - (n - 1) / 2) * sp, -13 * S, 2.3 * S, 0, TAU);
     ctx.fill();
-    text(ctx, label, x + 9 * S, 41 * S, { size: 7.5 * S, color: on ? '#57e2c0' : DIM, align: 'left', ls: 1 });
-    ctx.restore();
-  };
-  // "NEAR" is always whoever is reading this copy of the prompt.
-  const me = g.input[who];
-  const them = g.input[who === 'a' ? 'b' : 'a'];
-  mark(-30 * S, me.touching, 'YOU');
-  mark(14 * S, them.touching, 'THEM');
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawLaunchStrip(ctx, g) {
+  const S = g.S;
+  text(ctx, 'BOTH HOLD', 0, -3 * S, { size: 11 * S, color: INK, alpha: 0.9, ls: 2.2 });
+  if (g.banner) {
+    text(ctx, g.banner, 0, 8 * S, { size: 8 * S, color: HAZARD, alpha: 0.9, ls: 2 });
+  }
+
+  const w = 100 * S, k = g.holdT / CFG.launch.hold;
+  ctx.save();
+  ctx.globalAlpha = 0.22; ctx.fillStyle = INK;
+  ctx.fillRect(-w / 2, 14 * S, w, 2.6 * S);
+  ctx.globalAlpha = 1; ctx.fillStyle = FORCE;
+  ctx.fillRect(-w / 2, 14 * S, w * k, 2.6 * S);
+  ctx.restore();
 }

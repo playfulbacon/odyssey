@@ -130,6 +130,19 @@ ul.ticks { list-style: none; display: flex; flex-direction: column; gap: 5px; }
 ul.ticks li { padding-left: 14px; position: relative; }
 ul.ticks li::before { content: "—"; position: absolute; left: 0; color: var(--line); }
 
+.legend {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 7px 8px;
+  align-items: baseline;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 11px 12px;
+}
+.legend dt { font-size: 12px; text-align: center; line-height: 1.5; }
+.legend dd { font-size: 11.5px; line-height: 1.5; color: var(--dim); }
+.legend dd b { color: var(--ink); font-weight: 500; }
+
 .keys { line-height: 2.1; }
 kbd {
   font: inherit;
@@ -212,7 +225,8 @@ kbd {
 .card .nm { font-size: 12px; letter-spacing: .16em; color: var(--ink); }
 .card .meta { font-size: 10.5px; letter-spacing: .1em; color: var(--dim); white-space: nowrap; }
 .card .bl { font-size: 11.5px; line-height: 1.55; color: var(--dim); }
-.card .swatch { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 8px; vertical-align: 1px; }
+.card .glyph { font-style: normal; display: inline-block; width: 14px; margin-right: 7px; text-align: center; }
+.card .bl.need { color: #8d949d; }
 .card.maxed { opacity: .45; cursor: default; }
 .card.broke .meta { color: var(--warn); }
 .card.buyable { border-color: #33383f; }

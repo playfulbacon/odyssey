@@ -87,14 +87,16 @@ export class UI {
         if (d.hidden) continue;
         const card = el('button', 'card');
         card.type = 'button';
+        const glyph = d.cls === 'col' ? 'O' : 'X';
         const pay = d.value ? `${d.value} pts` : 'no points';
         const meta = d.cls === 'col'
-          ? `${d.shield} shield · ${pay}`
+          ? `${d.shield} ring${d.shield === 1 ? '' : 's'} · ${pay}`
           : (d.hp ? `${d.hp} armour · ${pay}` : 'lethal');
         card.innerHTML =
-          `<div class="row"><span class="nm"><i class="swatch" style="background:${d.color}"></i>${d.label}</span>` +
+          `<div class="row"><span class="nm"><i class="glyph" style="color:${d.color}">${glyph}</i>${d.label}</span>` +
           `<span class="meta">${meta}</span></div>` +
           `<div class="bl">${d.blurb}</div>` +
+          `<div class="bl need">opens to — ${d.needs}</div>` +
           `<div class="bl" style="opacity:.62">${d.hint}</div>`;
         card.addEventListener('click', () => this.app.startPlayground(d.key));
         host.appendChild(card);
