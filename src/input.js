@@ -208,7 +208,7 @@ export class Input {
         else if (p.heldByKey) { p.heldByKey = false; this.boost(p); }
 
         // Either key keeps the side down, but taking the touch away here never
-        // boosts — the line ghosting when you stop steering is a readout, not
+        // boosts — the ball ghosting when you stop steering is a readout, not
         // an action.
         const down = dir !== 0 || p.keyHold;
         if (down && !p.touching) this.press(p);

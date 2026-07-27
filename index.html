@@ -42,6 +42,7 @@
       <h3>BOOST</h3>
       <p><b>Lift your finger</b> to shove the ball away from you. For a moment it flies. A lift does nothing to a ball coming the other way, and if you both lift at once the two shoves cancel and the ball keeps its normal pace.</p>
       <p>While your finger is off the screen your half of the line breaks into faded dots — and your paddle is frozen where you left it.</p>
+      <p>With <b>both</b> of you off, the ball itself slows to a drift and turns gold. Any shove already running finishes first.</p>
 
       <h3>READING THE FIELD</h3>
       <p><b>Cool is safe, warm will cost you a life.</b> Shape says it a second time — collectables are an <b>O</b>, obstacles an <b>X</b> — so you never have to pick one signal out at speed.</p>
@@ -51,7 +52,7 @@
         <dt style="color:#ff4a55">X</dt><dd><b>Obstacle.</b> Warm. A life, unless you meet its gate.</dd>
         <dt style="color:#ff4a55">■</dt><dd><b>RED</b> — nothing gets through. Ever.</dd>
         <dt style="color:#ff9633">■</dt><dd><b>ORANGE</b> — safe only to a boosted ball.</dd>
-        <dt style="color:#ffcf3d">■</dt><dd><b>GOLD, DOTTED</b> — a ghosted line, and the ghost shield only it can strip.</dd>
+        <dt style="color:#ffcf3d">■</dt><dd><b>GOLD, DOTTED</b> — the ghosted ball, and the ghost shield only it can strip.</dd>
         <dt style="color:#ff5fa8">■</dt><dd><b>PINK</b> — safe only during its dark window.</dd>
         <dt style="color:#b98cff">■</dt><dd><b>VIOLET</b> — the boosted ball, and the boost shield only it can strip.</dd>
       </dl>
@@ -64,17 +65,19 @@
       <p>Only obstacles wear a shield, and a shield is stripped by <b>the state it is drawn in</b>. There are two, and they look nothing alike:</p>
       <ul class="ticks">
         <li><b>Boost shield</b> — violet and solid, the colour the ball turns while boosting. Only a boosted ball strips a layer.</li>
-        <li><b>Ghost shield</b> — dotted gold, the exact treatment the line takes on once <i>nobody</i> is holding it. Only a ghosted line strips a layer.</li>
+        <li><b>Ghost shield</b> — dotted gold, matching the ball while it drifts. Only a ghosted ball strips a layer.</li>
       </ul>
       <p>Anything else passes straight through and does nothing at all. Each good pass strips <b>ball power</b> layers, and when the last one goes the thing inside goes with it.</p>
 
-      <h3>THE GHOSTED LINE</h3>
-      <p>The ball only ever tells you one thing — violet means it can strip a boost shield. The <i>line</i> carries the other key, in two steps:</p>
+      <h3>THE BALL IS THE READOUT</h3>
+      <p><b>The ball wears whatever it can currently strip</b>, and it is the only thing on the field that changes:</p>
       <ul class="ticks">
-        <li>Let go and <b>your half breaks into faded dots</b> straight away. That is your own state, and only yours.</li>
-        <li>Once you have <i>both</i> let go the dots <b>turn gold</b> and brighten. The line is now the same colour as a ghost shield, because it is now the thing that strips one.</li>
+        <li><b>Violet</b> — boosting. It is flying, and it can strip a boost shield.</li>
+        <li><b>Gold</b> — ghosting. Nobody is holding, so it has slowed to a drift, and it can strip a ghost shield.</li>
+        <li><b>Ink</b> — neither. It strips nothing.</li>
       </ul>
-      <p>Gold never appears on the line early. If you can see it, the phantom is open — that is the whole point of holding the colour back.</p>
+      <p>One at a time, and <b>a shove already under way always finishes first</b> — letting go of the second finger never snatches a boost away mid-flight. The drift only starts once nothing is pushing.</p>
+      <p>The line stays ink throughout. All it reports is who is holding: solid for a held half, faded dots for a released one.</p>
 
       <h3>OBSTACLES</h3>
       <p>This is the whole game. The breakable ones pay several times what a collectable does, because they are the only things that can cost you:</p>
@@ -82,7 +85,7 @@
         <li><b>SLAB</b> and <b>ROTOR</b> — red. No shield, no gate, no way through.</li>
         <li><b>BRITTLE</b> — orange, behind a three-layer boost shield.</li>
         <li><b>PULSAR</b> — pink, over a boost shield. Lethal while lit, inert while dark, so boost through it in a dark window. The one piece whose gate and shield are different questions.</li>
-        <li><b>PHANTOM</b> — gold, behind a two-layer ghost shield. Let go together and the line goes dotted gold to match; that is when a pass strips a layer. Any finger on the glass and it costs a life.</li>
+        <li><b>PHANTOM</b> — gold, behind a two-layer ghost shield. Let go together and the ball slows and goes dotted gold to match; that is when a pass strips a layer. Any finger on the glass and it costs a life.</li>
       </ul>
 
       <h3>LAUNCHING</h3>
@@ -94,7 +97,7 @@
       <h3>DESKTOP KEYS</h3>
       <p class="keys">Bottom player — <kbd>A</kbd>&nbsp;<kbd>D</kbd> slide, <kbd>S</kbd> boosts.<br />
       Top player — <kbd>J</kbd>&nbsp;<kbd>L</kbd> slide, <kbd>K</kbd> boosts.<br />
-      A finger does two jobs at once; on a keyboard they are two keys. <b>Steering keeps your side down</b> — park both paddles and the line ghosts, and that is all parking does. <b>The boost is a tap of S or K</b>: hold it to keep your side down without moving, and let go to shove.<br />
+      A finger does two jobs at once; on a keyboard they are two keys. <b>Steering keeps your side down</b> — park both paddles and the ball ghosts, and that is all parking does. <b>The boost is a tap of S or K</b>: hold it to keep your side down without moving, and let go to shove.<br />
       The mouse also works as one player, and does both at once like a finger.</p>
 
       <div class="stack">
@@ -112,7 +115,7 @@
         <dt style="color:#8ef0d0">O</dt><dd>cool — collectable, always safe, always just a touch</dd>
         <dt style="color:#ff4a55">X</dt><dd>warm — obstacle, and the hue names its gate</dd>
         <dt style="color:#b98cff">■</dt><dd>violet, solid — a boost shield, stripped by the boosted ball</dd>
-        <dt style="color:#ffcf3d">■</dt><dd>gold, dotted — a ghosted line, and the ghost shield it strips</dd>
+        <dt style="color:#ffcf3d">■</dt><dd>gold, dotted — the ghosted ball, and the ghost shield it strips</dd>
       </dl>
       <h3 class="sec">COLLECTABLES</h3>
       <div class="cards" id="pg-collectables"></div>

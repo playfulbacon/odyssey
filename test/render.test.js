@@ -1,9 +1,9 @@
 // Drawing tests, through a recording stand-in for a canvas context.
 //
-// These exist for one claim in particular: that a released half of the line and
-// the PHANTOM are drawn as the same thing. That is the sort of agreement that
-// rots silently, so it is checked against what render() actually emits rather
-// than against the helper in isolation.
+// These exist for one claim in particular: that the ball is drawn as the shield
+// it can strip, and that the line stays out of it. That is the sort of
+// agreement that rots silently, so it is checked against what render() actually
+// emits rather than against the helpers in isolation.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -52,12 +52,13 @@ function stubInput(aTouch, bTouch) {
 }
 
 // A live playground with one obstacle sitting in the middle of the field.
-function frameWith(type, aTouch, bTouch) {
+function frameWith(type, aTouch, bTouch, ballState = 'normal') {
   const input = stubInput(aTouch, bTouch);
   const g = new Game({}, input, {});
   g.resize(400, 800, 1);
   g.startPlayground(type);
   g.phase = 'play';
+  g.ball.state = ballState;
   g.entities.length = 0;
   const e = makeObstacle(type, 200, 400, 1, difficulty(1));
   e.spawnT = 0;
@@ -68,7 +69,26 @@ function frameWith(type, aTouch, bTouch) {
   return ops;
 }
 
-const frame = (a, b) => frameWith('phantom', a, b);
+const frame = (a, b, ballState) => frameWith('phantom', a, b, ballState);
+const fills = (ops, color) => ops.filter((o) => o.op === 'fill' && o.fillStyle === color);
+
+// An empty field, so the only things drawn are the furniture: the divider, the
+// two line halves, the paddles and the ball. Nothing else can be mistaken for
+// the line.
+function bare(aTouch, bTouch, ballState = 'normal') {
+  const input = stubInput(aTouch, bTouch);
+  const g = new Game({}, input, {});
+  g.resize(400, 800, 1);
+  g.startPlayground('mote');
+  g.phase = 'play';
+  g.ball.state = ballState;
+  g.entities.length = 0;
+  const { ctx, ops } = recorder();
+  render(ctx, g);
+  return ops;
+}
+
+const DIVIDER = '#1b1e23';
 
 // Gold dotted strokes: the released line halves and the phantom's ghost shield.
 // The X inside the phantom is gold too but deliberately stays solid — dotting
@@ -85,34 +105,48 @@ test("the phantom's shield is gold and dotted whoever is holding", () => {
   }
 });
 
-test('gold on the line means the phantom is open right now, and nothing less', () => {
-  const dotted = (ops) => ops.filter((o) => o.op === 'stroke' && o.dash.length > 0);
-
-  // One player has let go: their half is dotted the moment they lift, but it is
-  // still the line's own ink. Only the shield is gold.
-  const one = dotted(frame(true, false));
-  assert.ok(one.some((o) => o.strokeStyle === PALETTE.ink),
-    'the released half should be dotted ink');
-  assert.ok(one.some((o) => o.strokeStyle === GOLD),
-    'and the shield should still be gold, so gold has not gone missing');
-
-  // Both let go: the line matches the shield exactly, and no ink dots are left.
-  const both = dotted(frame(false, false));
-  assert.equal(both.filter((o) => o.strokeStyle === PALETTE.ink).length, 0,
-    'once both let go every dotted stroke is gold');
-  assert.ok(both.filter((o) => o.strokeStyle === GOLD).length >= 3,
-    'both halves plus the shield');
+test('the line never changes colour, whoever is holding', () => {
+  // On an empty field with a plain ball there is no halo and nothing else to
+  // draw, so every stroke on screen belongs to the line or the divider. If any
+  // input combination tinted the line, a stranger colour would show up here.
+  for (const [a, b] of [[true, true], [true, false], [false, true], [false, false]]) {
+    const strokes = bare(a, b).filter((o) => o.op === 'stroke');
+    const colors = new Set(strokes.map((o) => o.strokeStyle));
+    colors.delete(DIVIDER);
+    assert.deepEqual([...colors], [PALETTE.ink], `touches ${a}/${b}`);
+  }
 });
 
-test('a ghosted line and a ghost shield are drawn the same way', () => {
-  // Nobody holding: two line halves plus every layer of the shield, identical
-  // dash, identical weight, identical cap. This is the claim the whole idea
-  // rests on — the shield is not *like* a ghosted line, it is one.
-  const ops = goldDotted(frame(false, false));
-  assert.ok(ops.length >= 3, `expected the line halves and the shield, got ${ops.length}`);
+test('a released half is dotted ink — the report, not the key', () => {
+  const one = bare(true, false).filter((o) => o.op === 'stroke' && o.strokeStyle === PALETTE.ink);
+  assert.ok(one.some((o) => o.dash.length === 0), 'the held half is solid');
+  assert.ok(one.some((o) => o.dash.length > 0), 'the released half is dotted');
+
+  const none = bare(false, false).filter((o) => o.op === 'stroke' && o.strokeStyle === PALETTE.ink);
+  assert.ok(none.every((o) => o.dash.length > 0), 'neither held: both halves dotted, still ink');
+});
+
+test('a ghosted ball and a ghost shield are drawn the same way', () => {
+  // The ball's halo and every layer of the shield: same colour, same dash,
+  // same weight, same cap. This is the claim the whole idea rests on — the
+  // ball is not *like* the shield it strips, it is drawn as it.
+  const ops = goldDotted(frame(false, false, 'ghost'));
+  assert.ok(ops.length >= 3, `expected the shield layers and the ball halo, got ${ops.length}`);
 
   const shapes = new Set(ops.map((o) => `${o.dash.join(',')}|${o.lineWidth}|${o.lineCap}`));
   assert.equal(shapes.size, 1, `they should be one treatment, found ${[...shapes].join('  /  ')}`);
+});
+
+test('the ball is filled with the shield it can strip', () => {
+  // Empty field again, so the ball is the only thing that could be wearing a
+  // shield colour.
+  assert.ok(fills(bare(false, false, 'ghost'), GOLD).length >= 1, 'ghosting: gold');
+  assert.ok(fills(bare(true, true, 'boost'), PALETTE.ring).length >= 1, 'boosting: violet');
+
+  const plain = bare(true, true, 'normal');
+  assert.equal(fills(plain, GOLD).length, 0, 'a plain ball is never gold');
+  assert.equal(fills(plain, PALETTE.ring).length, 0, 'nor violet');
+  assert.ok(fills(plain, PALETTE.ink).length >= 1, 'it is ink');
 });
 
 test('a phantom wears no violet at all — its shield is the only ring it has', () => {
@@ -129,18 +163,16 @@ test('a boost shield stays violet and solid, so the two never blur together', ()
   for (const o of ops) assert.equal(o.dash.length, 0, 'a boost shield is never dotted');
 });
 
-test('the treatment fades until the state is actually live, then brightens', () => {
-  const half = goldDotted(frame(true, false));   // one player has let go
-  const both = goldDotted(frame(false, false));  // both have
+test('the shield brightens the moment it can actually be stripped', () => {
+  const shut = goldDotted(frame(true, false));         // someone still holding
+  const open = goldDotted(frame(false, false, 'ghost'));
 
   const alpha = (ops) => Math.max(...ops.map((o) => o.globalAlpha));
-  assert.ok(alpha(both) > alpha(half), 'both hands off should be the brighter state');
-  // And the phantom moves with the line rather than on its own schedule.
-  assert.equal(new Set(half.map((o) => o.globalAlpha.toFixed(3))).size, 1);
-  assert.equal(new Set(both.map((o) => o.globalAlpha.toFixed(3))).size, 1);
+  assert.ok(alpha(open) > alpha(shut), 'hands off should be the brighter state');
+  assert.equal(new Set(shut.map((o) => o.globalAlpha.toFixed(3))).size, 1);
 });
 
-test('a held half of the line is solid ink, not gold and not dotted', () => {
+test('both halves held means two solid ink strokes and no dots on the line', () => {
   const ops = frame(true, true).filter((o) => o.op === 'stroke' && o.strokeStyle === PALETTE.ink);
   assert.ok(ops.length >= 2, 'both halves held');
   for (const o of ops) assert.equal(o.dash.length, 0, 'a held half must be solid');

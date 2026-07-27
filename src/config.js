@@ -28,6 +28,10 @@ export const CFG = {
     mult: 2.35,   // ball moving away from the lifter; a lift never slows it down
   },
 
+  // The ball drifts while nobody is holding — but only once any shove already
+  // under way has finished.
+  ghost: { slow: 0.6 },
+
   launch: {
     hold: 0.9,    // seconds both players must hold
     drain: 1.9,   // how fast the bar empties when someone lets go

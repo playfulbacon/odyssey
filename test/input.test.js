@@ -78,7 +78,7 @@ test('the hold key shoves even while the paddle is still being steered', () => {
   assert.equal(i.a.touching, true, 'and steering keeps the side down');
 });
 
-test('the line ghosts once neither paddle is being driven', () => {
+test('the ball ghosts once neither paddle is being driven', () => {
   const i = mkInput();
   i.a.keyRight = true; i.b.keyLeft = true;
   step(i);

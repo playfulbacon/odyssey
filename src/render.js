@@ -5,12 +5,13 @@
 //   The warm hue names the gate, so two obstacles that open the same way look
 //   the same. The cool hue is identity only.
 //   Shields come in two kinds: violet and solid for a boost shield, dotted gold
-//   for a ghost shield. A ghost shield is drawn with the same ghostStroke() as
-//   a ghosted line, because that is what strips it — and gold only ever appears
-//   on the line once the ghosted state is actually live.
+//   for a ghost shield. The ball wears whichever state it is in, so its colour
+//   is always the shield it can strip. Nothing else changes colour to say so —
+//   the line is ink throughout, and only breaks into dots to report which
+//   halves are being held.
 
 import { CFG } from './config.js';
-import { PALETTE, GATES, SHIELDS, stateColorOf, ballColorFor, lineColorFor } from './entities.js';
+import { PALETTE, GATES, SHIELDS, stateColorOf, ballColorFor } from './entities.js';
 
 const INK = PALETTE.ink;
 const RING = PALETTE.ring;
@@ -44,14 +45,14 @@ const fmtTime = (s) => {
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 };
 
-// The ghost treatment, in one place so it cannot drift apart: same dash, same
-// cap, same weight, faded until the state is live and bright once it is. Worn
-// by a released half of the line and by a ghost shield.
+// The dotted treatment, in one place so it cannot drift apart: same dash, same
+// cap, same weight, faded when it is only reporting and bright when it is live.
+// Worn by a ghost shield, by the ghosted ball's halo, and — in ink, faded — by
+// a half of the line nobody is holding.
 //
-// Colour is the caller's, because the two do not agree on it. The shield is
-// always gold — that is what the piece *is*. The line only earns gold once both
-// halves are released; a single lifted finger gets the dots without the colour,
-// so gold on screen always means the phantom is open right now.
+// Colour is the caller's, because those three do not agree on it. Gold means
+// ghost; the line is never gold, because the line is not the thing that strips
+// anything.
 export function ghostStroke(ctx, S, live, color) {
   ctx.strokeStyle = color;
   ctx.globalAlpha *= live ? 0.95 : 0.4;
@@ -95,9 +96,8 @@ function segRing(ctx, x, y, r, total, left, setup) {
   ctx.restore();
 }
 
-// A boost shield is violet and solid, matching the ball that strips it. A ghost
-// shield borrows ghostStroke outright, so it is not merely similar to a ghosted
-// line — it is the same call, and always in the phantom's gold.
+// A boost shield is violet and solid, a ghost shield gold and dotted — each
+// matching the ball that strips it, down to the stroke.
 function shieldStroke(e, g) {
   const S = g.S;
   if (e.shield === 'ghost') {
@@ -155,12 +155,11 @@ export function render(ctx, g) {
   }
 }
 
-// The ball reports one thing: whether it can currently break a ring. "Nobody is
-// holding" lives on the line instead, where the two halves can report it
-// separately.
+// The ball is the readout: whichever state it is in is the shield it can strip,
+// and it is drawn as that shield's colour.
 function ballKeys(g) {
-  const boosted = g.ball.boosted && g.phase === 'play';
-  return { boosted, color: ballColorFor({ boosted }) };
+  const state = g.phase === 'play' ? g.ball.state : 'normal';
+  return { state, color: ballColorFor(state) };
 }
 
 // ── field furniture ─────────────────────────────────────────────────────────
@@ -178,19 +177,19 @@ function drawTerritory(ctx, g) {
 }
 
 // Two halves, so each player can see at a glance whether their own finger is
-// down. Held is solid ink; released breaks into faded dots straight away, and
-// the dots turn the phantom's gold only once both halves are released.
+// down: solid when held, faded dots when not. The line never changes colour —
+// it reports who is holding, and nothing more. What the ball can *do* about it
+// is on the ball.
 function drawLine(ctx, g, A, B) {
   const M = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
-  const ghosted = g.input.handsOff;
   const seg = (P, Q, on) => {
     ctx.save();
     if (on) {
       ctx.globalAlpha = 0.92;
-      ctx.strokeStyle = lineColorFor(true, ghosted);
+      ctx.strokeStyle = INK;
       ctx.lineWidth = 1.4 * g.S;
     } else {
-      ghostStroke(ctx, g.S, ghosted, lineColorFor(false, ghosted));
+      ghostStroke(ctx, g.S, false, INK);
     }
     ctx.beginPath();
     ctx.moveTo(P.x, P.y); ctx.lineTo(Q.x, Q.y);
@@ -205,13 +204,13 @@ function drawPaddle(ctx, g, P, p, inward) {
   const w = g.paddleW, h = g.paddleH, S = g.S;
   ctx.save();
   ctx.globalAlpha = p.touching ? 1 : 0.5;
-  ctx.fillStyle = lineColorFor(p.touching, g.input.handsOff);
+  ctx.fillStyle = INK;
   roundRect(ctx, P.x - w / 2, P.y - h / 2, w, h, CFG.paddle.round * S);
   ctx.fill();
 
   const y = P.y - inward * (h / 2 + 5 * S);
 
-  // A violet flare while the lift is still shoving — the ball is violet too.
+  // A violet flare while the lift is still shoving, matching the ball.
   if (p.boostT > 0) {
     const k = p.boostT / Math.max(0.001, g.input.boostDur);
     ctx.globalAlpha = k * 0.85;
@@ -266,10 +265,17 @@ function drawBall(ctx, g, A, B) {
   pathO(ctx, x, y, r);
   ctx.fill();
 
-  if (key.boosted) {
+  // A halo in the ball's own colour, drawn the way that shield is drawn: solid
+  // for a boost, dotted for a ghost. Same stroke as the shield it is about to
+  // strip, so the two read as the same substance.
+  if (key.state === 'boost') {
     ctx.globalAlpha = 0.6;
-    ctx.strokeStyle = RING;
+    ctx.strokeStyle = key.color;
     ctx.lineWidth = 1.3 * S;
+    pathO(ctx, x, y, r + 4 * S);
+    ctx.stroke();
+  } else if (key.state === 'ghost') {
+    ghostStroke(ctx, S, true, key.color);
     pathO(ctx, x, y, r + 4 * S);
     ctx.stroke();
   }

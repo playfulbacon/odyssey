@@ -21,7 +21,8 @@ constantly.
 **Lift** your finger to shove the ball away from you. For a moment it flies. A
 lift does nothing to a ball coming the other way, and if you both lift at once
 the two shoves cancel out. While your finger is off the glass your half of the
-line breaks into faded dots — and your paddle is frozen where you left it.
+line breaks into faded dots — and your paddle is frozen where you left it. With
+*both* of you off, the ball slows to a drift and turns gold.
 
 ## Reading the field
 
@@ -47,36 +48,36 @@ Only obstacles wear a shield, and **a shield is stripped by the state it is
 drawn in**. There are two kinds, and the whole point is that they look nothing
 alike:
 
-- **Boost shield** — violet, solid. The colour the ball turns while boosting,
-  and a boosted ball is what strips a layer.
-- **Ghost shield** — gold, dotted. The exact stroke a half of the line takes on
-  when nobody is holding it, and a *ghosted line* is what strips a layer.
+- **Boost shield** — violet, solid. Stripped by a boosted ball.
+- **Ghost shield** — gold, dotted. Stripped by a *ghosted* ball: one drifting
+  with nobody holding the glass.
 
 Anything else passes straight through and does nothing. Each good pass strips
 *ball power* layers; when the last one goes, so does the thing inside.
 
-The ball carries one key — violet, when it is boosting. The other lives on **the
-line**, where it belongs, because the line has two halves and can report each
-player separately, in two steps:
+## The ball is the readout
 
-1. Let go and **your half breaks into faded dots** immediately. That is your own
-   state and nobody else's.
-2. Once *both* halves are released the dots **turn gold** and brighten — the
-   line is now the same colour as a ghost shield, because it is now the thing
-   that strips one.
+**The ball wears whatever it can currently strip**, and it is the only thing on
+the field that changes colour:
 
-Gold is held back on purpose. It never shows on the line while the ghosted state
-is only half true, so seeing gold always means the phantom is open right now.
+| | | |
+|---|---|---|
+| **violet** | boosting | flying, and strips a boost shield |
+| **gold** | ghosting | nobody holding, so it has slowed to a drift, and strips a ghost shield |
+| **ink** | neither | strips nothing |
 
-A ghost shield and a ghosted line are not similar-looking, they are the same
-call: both come from `ghostStroke()`. The shield is always gold — that is what
-the piece *is* — and the line earns that colour only when it has actually
-become the key. `resolveObstacle()` asks the shield whether the current state
-breaks it, so the picture and the rule cannot come apart.
+One state at a time, and **a shove already under way always finishes first** —
+letting go of the second finger never snatches a boost away mid-flight. The
+drift only starts once nothing is pushing.
 
-Two colours are outside the warm/cool split because they carry rules rather than
-identity: **violet** (above) and **ink** — the ball at rest, the paddles, and a
-half of the line someone is holding.
+The line stays ink throughout. All it reports is who is holding: solid for a
+held half, faded dots for a released one. It is a readout of the input, not a
+key, so it has no business changing colour.
+
+A ghosted ball and a ghost shield are not similar-looking, they are the same
+call: both come from `ghostStroke()`. `resolveObstacle()` asks the shield
+whether the ball's current state breaks it, so the picture and the rule cannot
+come apart.
 
 ## Pieces
 
@@ -100,7 +101,7 @@ nowhere else.
 | **ROTOR** | red | — | — | nothing, and it sweeps toward you. |
 | **BRITTLE** | orange | 3-layer boost | 430 | a boosted ball. |
 | **PULSAR** | pink | 2-layer boost | 340 | anything, during its dark window. |
-| **PHANTOM** | gold | 2-layer ghost | 700 | both fingers off the glass. |
+| **PHANTOM** | gold | 2-layer ghost | 700 | both fingers off the glass — though stripping it needs the drift to have actually started. |
 
 An obstacle is two things: a **gate**, which says when it is safe to touch and
 therefore what colour it wears, and a **shield**, which says what strips a layer.
@@ -114,8 +115,8 @@ Everything fades in behind a dashed telegraph ring and is inert until it lands.
 Because a boost shield needs a boost, the alternating lift is the basic rhythm
 of scoring: you each shove as the ball runs away from you, so it is violet in
 both directions. The PHANTOM is the one piece that wants the opposite — line it
-up, then both of you let go and leave the glass alone while the ghosted line
-saws through it.
+up, then both of you let go, wait out whatever shove was still running, and
+leave the glass alone while the slow gold drift saws through it.
 
 **Launching.** At the start of a run, and after every lost life, both players
 hold their half until the bar fills. A lost ball comes back on the paddle of the
@@ -165,11 +166,11 @@ touch *and* shoves the ball — and on a keyboard those are split across two key
 | Bottom player | <kbd>A</kbd> <kbd>D</kbd> | <kbd>S</kbd> |
 | Top player | <kbd>J</kbd> <kbd>L</kbd> | <kbd>K</kbd> |
 
-**Steering keeps your side down.** Park both paddles and the line ghosts — and
+**Steering keeps your side down.** Park both paddles and the ball ghosts — and
 that is all parking does; letting go of a direction key never shoves the ball.
 **The shove is a tap of the boost key**, which also holds your side down without
-moving it. So you can line a phantom up, stop, and let the ghosted line saw
-through it without launching anything by accident.
+moving it. So you can line a phantom up, stop, and let the drift saw through it
+without launching anything by accident.
 
 The mouse works as a single player and does both jobs at once, like a finger.
 

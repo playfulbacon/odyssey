@@ -30,7 +30,7 @@ export class Game {
     this.entities = [];
     this.particles = [];
     this.floaters = [];
-    this.ball = { t: 0, dir: 1, boosted: false, trail: [], x: 0, y: 0 };
+    this.ball = { t: 0, dir: 1, state: 'normal', trail: [], x: 0, y: 0 };
     this.shake = 0;
     this.flash = 0;
     this.flashColor = GATES.never.color;
@@ -109,7 +109,7 @@ export class Game {
     this.phase = 'launch';
     this.ball.t = t;
     this.ball.dir = t >= 0.5 ? -1 : 1;   // it always sets off away from its paddle
-    this.ball.boosted = false;
+    this.ball.state = 'normal';
     this.ball.trail.length = 0;
     this.holdT = 0;
     this.launchDelay = delay;
@@ -207,13 +207,23 @@ export class Game {
     }
   }
 
-  // Boost multiplier for the current frame. A lift shoves the ball away from
-  // the lifter and does nothing at all to a ball coming the other way. Two
-  // lifts cancel, so the ball keeps its normal pace.
-  _speedMult() {
+  // What state is the ball in? A shove already under way always wins: the ball
+  // finishes its boost before it will drift, so letting go of the second finger
+  // never snatches a shove away mid-flight.
+  //
+  // A lift shoves the ball away from the lifter and does nothing at all to a
+  // ball coming the other way. Two lifts cancel, which is also what lets the
+  // ghost drift start the moment both players are off with nothing left to run.
+  _ballState() {
     const nd = this.input.boostDir;
-    if (nd === 0) return 1;
-    return Math.sign(this.ball.dir) === nd ? CFG.boost.mult : 1;
+    if (nd !== 0) return Math.sign(this.ball.dir) === nd ? 'boost' : 'normal';
+    return this.input.handsOff ? 'ghost' : 'normal';
+  }
+
+  _speedMult(state) {
+    if (state === 'boost') return CFG.boost.mult;
+    if (state === 'ghost') return CFG.ghost.slow;
+    return 1;
   }
 
   _stepBall(dt) {
@@ -226,8 +236,8 @@ export class Game {
     const sdt = dt / steps;
 
     for (let i = 0; i < steps; i++) {
-      const m = this._speedMult();
-      this.ball.boosted = m > 1;
+      this.ball.state = this._ballState();
+      const m = this._speedMult(this.ball.state);
       this.ball.t += this.ball.dir * ((basePx * m * sdt) / len);
 
       if (this.ball.t <= 0) {
@@ -245,11 +255,11 @@ export class Game {
       if (this._collide(p.x, p.y)) return;
     }
 
-    // The trail remembers whether the ball was boosted, so a punch through a
-    // ring leaves a violet streak behind it.
+    // The trail remembers the state, so a punch leaves a violet streak and a
+    // drift leaves a gold one.
     this.ball.trail.push({
       x: this.ball.x, y: this.ball.y,
-      c: ballColorFor({ boosted: this.ball.boosted }),
+      c: ballColorFor(this.ball.state),
     });
     if (this.ball.trail.length > CFG.ball.trail) this.ball.trail.shift();
   }
@@ -268,7 +278,14 @@ export class Game {
   // Returns true if the step should abort (a life was lost).
   _collide(x, y) {
     const br = this.ballR;
-    const world = { boosted: this.ball.boosted, handsOff: this.input.handsOff };
+    // The ball's state *is* the key it carries, so what it can strip is exactly
+    // what it is drawn as. handsOff stays separate: a phantom is safe to touch
+    // the moment both fingers are off, even while a shove is still finishing.
+    const world = {
+      boosted: this.ball.state === 'boost',
+      ghosted: this.ball.state === 'ghost',
+      handsOff: this.input.handsOff,
+    };
 
     for (const e of this.entities) {
       if (e.dead || e.cool > 0 || e.spawnT > 0) continue;

@@ -23,15 +23,14 @@
 //
 // Every breakable obstacle wears a shield, and the shield says what opens it —
 // see SHIELDS. There are two kinds and they look nothing alike:
-//   boost shield  violet, solid. The colour the ball turns while boosting, and
-//                 a boosted ball is what strips it.
-//   ghost shield  gold, dotted. The exact treatment a half of the line takes on
-//                 once *nobody* is holding it, and a ghosted line is what strips
-//                 it. See ghostStroke() in render.js — one definition, worn by
-//                 the ghosted line and by the shield alike.
+//   boost shield  violet, solid. Stripped by a boosted ball.
+//   ghost shield  gold, dotted. Stripped by a ghosted ball — one drifting with
+//                 nobody holding the glass.
 //
-// INK is the rest: the ball at its normal pace, the paddles, a held half of the
-// line.
+// The ball is the only thing that carries a state, and it wears it: violet
+// while it is boosting, gold while it is ghosting, ink otherwise. So the ball's
+// colour is always the shield it can strip, and nothing else on the field
+// changes colour to say so — the line stays ink throughout.
 
 export const PALETTE = {
   ink: '#e9ecef',
@@ -63,26 +62,23 @@ export const SHIELDS = {
   },
   ghost: {
     key: 'ghost', color: GATES.handsOff.color, dotted: true,
-    label: 'a ghosted line — both fingers off the glass',
-    breaks: (w) => !!w.handsOff,
+    label: 'a ghosted ball — drifting, nobody holding',
+    breaks: (w) => !!w.ghosted,
   },
 };
 
 export const isWarm = (c) => Object.values(GATES).some((g) => g.color === c);
 export const isCool = (c) => Object.values(COOL).includes(c);
 
-// The ball wears one thing and one thing only: whether it is currently able to
-// break a ring.
-export function ballColorFor({ boosted }) {
-  return boosted ? PALETTE.ring : PALETTE.ink;
-}
+// The three states the ball can be in, and the colour each one wears. A state
+// is exactly the shield it can strip, so the ball's colour is a live readout of
+// what it is currently able to break.
+export const BALL_STATES = ['boost', 'ghost', 'normal'];
 
-// A half of the line you have let go of goes dotted straight away — that is
-// yours to see, and it is true the moment you lift. It only turns *gold* once
-// both halves have, because gold is the phantom's colour and it would be lying
-// if it showed up while the ghosted state was still half true.
-export function lineColorFor(touching, ghosted) {
-  return !touching && ghosted ? GATES.handsOff.color : PALETTE.ink;
+export function ballColorFor(state) {
+  if (state === 'boost') return SHIELDS.boost.color;
+  if (state === 'ghost') return SHIELDS.ghost.color;
+  return PALETTE.ink;
 }
 
 // Collectables carry no rings and no conditions. Touch one and it is banked.
@@ -130,8 +126,8 @@ export const OBSTACLES = {
   phantom: {
     key: 'phantom', cls: 'obs', label: 'PHANTOM', gate: 'handsOff', shield: 'ghost',
     value: 700, hp: 2, r: 22, shieldGrows: false,
-    blurb: 'The same shield idea with a different key: dotted gold instead of violet, stripped by a ghosted line instead of a boosted ball. Let go together and the whole line goes dotted gold to match — that is when a pass strips a layer. A finger on the glass and it costs a life.',
-    hint: 'Aim first. Once you both let go neither paddle moves, so the line has to already be right.',
+    blurb: 'The same shield idea with a different key: dotted gold instead of violet, stripped by a ghosted ball instead of a boosted one. Let go together and the ball slows to a drift and turns gold to match — that is when a pass strips a layer. A finger on the glass and it costs a life.',
+    hint: 'Aim first, then let go. Any shove still running has to finish before the drift starts.',
   },
   pulsar: {
     key: 'pulsar', cls: 'obs', label: 'PULSAR', gate: 'dark', shield: 'boost',

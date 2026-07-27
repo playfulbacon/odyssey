@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { CFG, UPGRADES, upgradeCost, derived, difficulty, emptyUpgrades } from '../src/config.js';
 import {
   PALETTE, GATES, COOL, SHIELDS, COLLECTABLES, OBSTACLES,
-  isWarm, isCool, ballColorFor, lineColorFor, stateColorOf,
+  isWarm, isCool, ballColorFor, stateColorOf,
   isLethal, resolveObstacle, shieldBreaks,
   makeCollectable, makeObstacle, hitTest, updateEntity,
 } from '../src/entities.js';
@@ -33,11 +33,13 @@ function mkGame() {
   return g;
 }
 
+// The world a contact sees. `boosted` and `ghosted` come from the ball's state,
+// which is exclusive; `handsOff` is the raw input, which is not.
 const WORLDS = [
-  { name: 'plain', boosted: false, handsOff: false },
-  { name: 'boosted', boosted: true, handsOff: false },
-  { name: 'hands off', boosted: false, handsOff: true },
-  { name: 'boosted, hands off', boosted: true, handsOff: true },
+  { name: 'plain', boosted: false, ghosted: false, handsOff: false },
+  { name: 'boosted', boosted: true, ghosted: false, handsOff: false },
+  { name: 'ghosted', boosted: false, ghosted: true, handsOff: true },
+  { name: 'hands off, boost still finishing', boosted: true, ghosted: false, handsOff: true },
 ];
 
 // ── the colour language ─────────────────────────────────────────────────────
@@ -74,23 +76,52 @@ test("an obstacle's colour is derived from its gate, so it cannot disagree", () 
   assert.notEqual(OBSTACLES.phantom.color, OBSTACLES.pulsar.color);
 });
 
-test('the ball reports one thing: whether it can break a ring', () => {
-  assert.equal(ballColorFor({ boosted: true }), PALETTE.ring);
-  assert.equal(ballColorFor({ boosted: false }), PALETTE.ink);
-  // Hands-off is deliberately *not* on the ball any more — it lives on the line.
-  assert.equal(ballColorFor({ boosted: false, handsOff: true }), PALETTE.ink);
+test("the ball's colour is exactly the shield it can strip", () => {
+  assert.equal(ballColorFor('boost'), SHIELDS.boost.color);
+  assert.equal(ballColorFor('ghost'), SHIELDS.ghost.color);
+  assert.equal(ballColorFor('ghost'), OBSTACLES.phantom.color);
+  assert.equal(ballColorFor('normal'), PALETTE.ink, 'and ink strips nothing');
 });
 
-test('the line only turns gold once it is actually ghosted', () => {
-  // Held: the line's own ink, ghosted or not.
-  assert.equal(lineColorFor(true, false), PALETTE.ink);
-  assert.equal(lineColorFor(true, true), PALETTE.ink);
-  // Released while the other half is still held: dotted, but still ink. Gold
-  // here would claim the phantom was open when it is not.
-  assert.equal(lineColorFor(false, false), PALETTE.ink);
-  // Released with both halves released: the phantom's own colour, exactly.
-  assert.equal(lineColorFor(false, true), OBSTACLES.phantom.color);
-  assert.equal(lineColorFor(false, true), SHIELDS.ghost.color);
+// ── ball state ──────────────────────────────────────────────────────────────
+//
+// One state at a time, and a shove already under way always wins — the ball
+// finishes its boost before it will ever drift.
+
+test('a live shove beats the drift, so a boost always finishes', () => {
+  const g = mkGame();
+  g.ball.dir = 1;
+
+  g.input.handsOff = true;
+  g.input.boostDir = 0;
+  assert.equal(g._ballState(), 'ghost', 'nothing pushing and nobody holding');
+
+  // Both hands off, but one player's shove is still running in the ball's
+  // direction: it keeps boosting until that dies.
+  g.input.boostDir = 1;
+  assert.equal(g._ballState(), 'boost');
+
+  // Still running, pushing the other way: not a boost, but not a drift either.
+  g.input.boostDir = -1;
+  assert.equal(g._ballState(), 'normal', 'the shove has to finish first');
+});
+
+test('the ghost drift needs everyone off the glass', () => {
+  const g = mkGame();
+  g.input.boostDir = 0;
+  g.input.handsOff = false;
+  assert.equal(g._ballState(), 'normal');
+  g.input.handsOff = true;
+  assert.equal(g._ballState(), 'ghost');
+});
+
+test('a ghosted ball drifts, a boosted one flies, and plain is plain', () => {
+  const g = mkGame();
+  assert.equal(g._speedMult('normal'), 1);
+  assert.equal(g._speedMult('boost'), CFG.boost.mult);
+  assert.equal(g._speedMult('ghost'), CFG.ghost.slow);
+  assert.ok(CFG.ghost.slow < 1, 'ghosting is slower than normal');
+  assert.ok(CFG.boost.mult > 1, 'and boosting is faster');
 });
 
 test('a pulsar never changes hue, only its window', () => {
@@ -180,15 +211,15 @@ test('run 1 is motes alone; the moving one arrives on run 2', () => {
 // ── shields ─────────────────────────────────────────────────────────────────
 //
 // Two kinds, same idea: a shield is stripped by the state it is drawn in. The
-// violet one wants the boosted ball; the dotted gold one wants a ghosted line.
+// violet one wants the boosted ball; the dotted gold one wants a ghosted ball.
 
 test('a shield is broken by exactly the state it is drawn in', () => {
   assert.equal(SHIELDS.boost.color, PALETTE.ring, 'the colour the ball turns while boosting');
-  assert.equal(SHIELDS.ghost.color, GATES.handsOff.color, 'the colour a released half of the line turns');
+  assert.equal(SHIELDS.ghost.color, GATES.handsOff.color, 'the colour the ball turns while it drifts');
 
   for (const w of WORLDS) {
-    assert.equal(SHIELDS.boost.breaks(w), w.boosted);
-    assert.equal(SHIELDS.ghost.breaks(w), w.handsOff);
+    assert.equal(SHIELDS.boost.breaks(w), w.boosted, w.name);
+    assert.equal(SHIELDS.ghost.breaks(w), w.ghosted, w.name);
   }
 });
 
@@ -211,26 +242,32 @@ test('a boost shield only comes off a boosted ball', () => {
   }
 });
 
-test('a ghost shield only comes off a ghosted line, and asks nothing about boost', () => {
+test('a ghost shield comes off a ghosted ball, and asks nothing about boost', () => {
   const e = makeObstacle('phantom', 0, 0, 1, D1);
   assert.equal(e.shield, 'ghost');
 
   // Someone is holding: lethal, whatever the ball is doing.
-  assert.equal(resolveObstacle(e, { boosted: false, handsOff: false }), 'kill');
-  assert.equal(resolveObstacle(e, { boosted: true, handsOff: false }), 'kill');
+  assert.equal(resolveObstacle(e, { handsOff: false, ghosted: false, boosted: false }), 'kill');
+  assert.equal(resolveObstacle(e, { handsOff: false, ghosted: false, boosted: true }), 'kill');
 
-  // Both let go: a layer comes off, and boosting is neither needed nor a bonus.
-  assert.equal(resolveObstacle(e, { boosted: false, handsOff: true }), 'damage');
-  assert.equal(resolveObstacle(e, { boosted: true, handsOff: true }), 'damage');
+  // Drifting with nobody on the glass: a layer comes off, no boost involved.
+  assert.equal(resolveObstacle(e, { handsOff: true, ghosted: true, boosted: false }), 'damage');
+
+  // Both off but a shove is still finishing: safe to touch, because the gate is
+  // hands-off — but the ball is not ghosted yet, so nothing is stripped.
+  assert.equal(resolveObstacle(e, { handsOff: true, ghosted: false, boosted: true }), 'pass');
 });
 
 test('the phantom is a shield, not armour behind one', () => {
   const e = makeObstacle('phantom', 0, 0, 1, D1);
   assert.ok(e.hpMax >= 2, 'it takes more than one pass');
-  // Whatever strips it is the same thing that makes it safe to touch, so there
-  // is never a pass that is safe but useless.
+  // It is safe to touch the moment both fingers are off, which is forgiving —
+  // stripping it needs the drift to have actually started.
   for (const w of WORLDS) {
-    assert.equal(isLethal(e, w), !shieldBreaks(e, w), `phantom, ${w.name}`);
+    assert.equal(isLethal(e, w), !w.handsOff, `lethal? phantom, ${w.name}`);
+    if (!isLethal(e, w)) {
+      assert.equal(shieldBreaks(e, w), w.ghosted, `strips? phantom, ${w.name}`);
+    }
   }
 });
 
@@ -262,30 +299,36 @@ test('ball power decides how much shield a single good pass takes', () => {
 
 test('a lift speeds the ball away and never slows it down', () => {
   const g = mkGame();
+  const paceOf = () => g._speedMult(g._ballState());
   g.ball.dir = 1;
+  g.input.handsOff = false;
 
   g.input.boostDir = 0;
-  assert.equal(g._speedMult(), 1, 'no lift, normal pace');
+  assert.equal(paceOf(), 1, 'no lift, normal pace');
 
   g.input.boostDir = 1;                       // near player lifted, ball heading away
-  assert.equal(g._speedMult(), CFG.boost.mult);
+  assert.equal(paceOf(), CFG.boost.mult);
 
   g.input.boostDir = -1;                      // far player lifted, ball heading at them
-  assert.equal(g._speedMult(), 1, 'a lift must not drag an incoming ball');
+  assert.equal(paceOf(), 1, 'a lift must not drag an incoming ball');
 
   g.ball.dir = -1;                            // ball turns round
-  assert.equal(g._speedMult(), CFG.boost.mult);
+  assert.equal(paceOf(), CFG.boost.mult);
 
-  assert.equal(CFG.boost.slow, undefined, 'the slow-down is gone entirely');
+  assert.equal(CFG.boost.slow, undefined, 'a lift never slows anything');
 });
 
-test('two simultaneous lifts cancel', () => {
+test('two simultaneous lifts cancel, and the drift takes over', () => {
   const g = mkGame();
   g.input.a.boostT = 0.3;
   g.input.b.boostT = 0.3;
   g.input.boostDir = (g.input.a.boostT > 0 ? 1 : 0) + (g.input.b.boostT > 0 ? -1 : 0);
-  assert.equal(g.input.boostDir, 0);
-  assert.equal(g._speedMult(), 1);
+  assert.equal(g.input.boostDir, 0, 'the two shoves cancel');
+
+  g.input.handsOff = false;
+  assert.equal(g._ballState(), 'normal', 'someone still holding: just normal pace');
+  g.input.handsOff = true;
+  assert.equal(g._ballState(), 'ghost', 'nobody holding and nothing left to run');
 });
 
 // ── geometry ────────────────────────────────────────────────────────────────
