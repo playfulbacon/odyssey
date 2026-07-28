@@ -90,20 +90,15 @@ export class UI {
         card.type = 'button';
 
         // Each family is asked a different question, so each card answers a
-        // different one. Gold: what is it worth. Enemy: how hard is it and how
-        // do you get in. Obstacle: nothing, there is nothing to know.
+        // different one. Enemy: how hard is it, how do you get in, what does it
+        // drop. Obstacle: nothing, because there is nothing to know.
         let glyph = 'X', meta = '', need = '';
-        if (d.cls === 'gold') {
-          glyph = 'O';
-          meta = d.charges ? `${d.charges} charges · ${d.charges * d.yield} motes` : `${d.gold} gold`;
-          need = d.charges
-            ? `<span style="color:${PALETTE.boost}">a boosted ball</span>, once per charge`
-            : 'any touch at all';
-        } else if (d.cls === 'enemy') {
+        if (d.cls === 'enemy') {
           glyph = String(d.strength);
-          meta = `strength ${d.strength} · ${d.value} pts`;
+          meta = `strength ${d.strength} · ${d.value} pts · ` +
+            `<span style="color:${PALETTE.gold}">${d.drop * GOLD.mote.gold}g</span>`;
           need = d.weak === 0
-            ? 'any contact, if your ball is strong enough'
+            ? `any contact, with a ball of strength ${d.strength} or better`
             : `<span style="color:${PALETTE.boost}">a boosted ball through the weak point</span>, ` +
               `entering from the ${d.weak === 1 ? 'one end it faces' : 'end each point faces'}`;
         } else {
@@ -121,7 +116,6 @@ export class UI {
         host.appendChild(card);
       }
     };
-    fill($('#pg-gold'), Object.values(GOLD));
     fill($('#pg-enemies'), Object.values(ENEMIES));
     fill($('#pg-obstacles'), Object.values(OBSTACLES));
   }
@@ -139,11 +133,11 @@ export class UI {
       stat('HEALTH', d.health) +
       stat('STRENGTH', `${d.strength} / ${d.strength + d.boostStrength}`);
 
-    // Escalation lands anywhere — a new hazard, a new seam, a new enemy — so
+    // Escalation lands on either side — a new hazard or a new enemy — so
     // announce whatever actually turned up rather than guessing the family.
     const prev = run > 1 ? difficulty(run - 1) : null;
     const label = (k) => ALL[k].label;
-    const spread = (x) => [...x.goldPool, ...x.enemyPool, ...x.obstaclePool];
+    const spread = (x) => [...x.enemyPool, ...x.obstaclePool];
     const pool = spread(diff);
     const fresh = prev ? pool.filter((k) => !spread(prev).includes(k)) : [];
     const known = `In play: ${pool.map(label).join(' · ')}.`;

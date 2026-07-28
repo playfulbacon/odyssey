@@ -9,12 +9,13 @@ import { CFG, UPGRADES, upgradeCost, derived, difficulty, emptyUpgrades } from '
 import {
   PALETTE, GOLD, ENEMIES, OBSTACLES, ALL, BALL_STATES, ballColorFor,
   WEAK_HALF, weakAngle, admitsDir, weakPointAt, shieldSpans,
-  resolveEnemy, resolveOre, reverses,
-  makeGold, makeLooseMote, makeEnemy, makeObstacle, hitTest, updateEntity,
+  resolveEnemy, reverses,
+  makeLooseMote, makeEnemy, makeObstacle, hitTest, updateEntity,
 } from '../src/entities.js';
 import { Game } from '../src/game.js';
 
 const D1 = difficulty(1);
+const difficultyRange = () => Array.from({ length: 12 }, (_, i) => difficulty(i + 1));
 
 function stubInput() {
   const p = () => ({ nx: 0.5, touching: false, boostT: 0, pointerId: null });
@@ -67,7 +68,7 @@ test('orange is boost and boost alone, wherever it turns up', () => {
 
 test('gold and points are separate piles that never feed each other', () => {
   const g = mkGame();
-  put(g, makeGold('mote', 0, 0, 1, D1));
+  put(g, makeLooseMote(0, 0, 1, D1));
   g._collide(200, 400);
   assert.ok(g.gold > 0, 'a mote pays gold');
   assert.equal(g.score, 0, 'and no points at all');
@@ -76,7 +77,7 @@ test('gold and points are separate piles that never feed each other', () => {
   put(g2, makeEnemy('drone', 0, 0, 1, D1));
   g2._collide(200, 400);
   assert.ok(g2.score > 0, 'a kill pays points');
-  assert.equal(g2.gold, 0, 'and no gold at all');
+  assert.equal(g2.gold, 0, 'and not one coin until the loot is picked up');
 });
 
 test('the run target is points, and gold is what the shop takes', () => {
@@ -91,63 +92,93 @@ test('the run target is points, and gold is what the shop takes', () => {
 
 // ── gold ────────────────────────────────────────────────────────────────────
 
-test('a mote is taken by any touch; ore needs a shove', () => {
-  const plain = mkGame();
-  const ore = put(plain, makeGold('ore', 0, 0, 1, D1));
-  const charges = ore.charges;
-  plain._collide(200, 400);
-  assert.equal(ore.charges, charges, 'a plain ball does nothing to a seam');
-  assert.equal(ore.dead, false);
-
-  const boosted = mkGame();
-  const ore2 = put(boosted, makeGold('ore', 0, 0, 1, D1), { boost: true });
-  boosted._collide(200, 400);
-  assert.equal(ore2.charges, charges - 1, 'a shove takes a charge');
+test('gold is loot and nothing else — there is no piece that spawns it', () => {
+  assert.deepEqual(Object.keys(GOLD), ['mote'], 'one gold piece, and it is the drop');
+  for (const d of difficultyRange()) {
+    assert.equal(d.goldPool, undefined, `run ${d.run} has no gold to spawn`);
+  }
+  // The director only knows about two families now.
+  const g = mkGame();
+  for (let i = 0; i < 400; i++) g._director(1 / 30);
+  assert.equal(g.entities.filter((e) => e.cls === 'gold').length, 0,
+    'nothing the director does puts gold on the field');
+  assert.ok(g.entities.some((e) => e.cls === 'enemy'), 'though it does spawn enemies');
 });
 
-test('cracking a charge scatters loose motes worth real gold', () => {
-  const g = mkGame();
-  const ore = put(g, makeGold('ore', 0, 0, 1, D1), { boost: true });
-  g._collide(200, 400);
+test('killing an enemy scatters its gold on the floor', () => {
+  for (const key of Object.keys(ENEMIES)) {
+    const g = mkGame();
+    const e = makeEnemy(key, 200, 400, 1, D1);
+    g._kill(e);
 
-  const loose = g.entities.filter((e) => e.type === 'mote');
-  assert.equal(loose.length, ore.yield, 'one charge, one scatter');
-  for (const m of loose) {
-    assert.ok(m.gold > 0, 'and every one is worth taking');
-    assert.ok(Math.hypot(m.vx, m.vy) > 0, 'they fly out');
-    assert.ok(m.ttl < Infinity, 'and fade if nobody comes for them');
+    const loot = g.entities.filter((e2) => e2.cls === 'gold');
+    assert.equal(loot.length, ENEMIES[key].drop, `${key} drops what its def says`);
+    assert.ok(g.score > 0, `${key} pays points immediately`);
+    assert.equal(g.gold, 0, `${key}: the gold is on the floor, not in the wallet`);
+    for (const m of loot) {
+      assert.ok(m.gold > 0, 'every mote is worth taking');
+      assert.ok(Math.hypot(m.vx, m.vy) > 0, 'they fly out');
+      assert.ok(m.ttl < Infinity, 'and fade if nobody comes for them');
+    }
   }
 });
 
-test('a seam runs dry after exactly its charges', () => {
+test('a bigger enemy drops more', () => {
+  const drops = ['drone', 'brute', 'cyclops', 'janus'].map((k) => ENEMIES[k].drop);
+  for (let i = 1; i < drops.length; i++) {
+    assert.ok(drops[i] > drops[i - 1], 'drops climb with the piece');
+  }
+});
+
+test('loot has to be collected, and only then is it gold', () => {
   const g = mkGame();
-  const ore = put(g, makeGold('ore', 0, 0, 1, D1), { boost: true });
-  const n = ore.charges;
-  for (let i = 0; i < n; i++) { ore.cool = 0; g._collide(200, 400); }
-  assert.equal(ore.charges, 0);
-  assert.equal(ore.dead, true);
+  const m = put(g, makeLooseMote(0, 0, 1, D1));
+  assert.equal(g.gold, 0);
+  g._collide(200, 400);
+  assert.equal(g.gold, m.gold, 'picked up');
+  assert.equal(m.dead, true);
 });
 
 test('gold never turns the ball round and never costs health', () => {
-  for (const type of Object.keys(GOLD)) {
-    for (const boost of [false, true]) {
-      const g = mkGame();
-      put(g, makeGold(type, 0, 0, 1, D1), { boost });
-      const dir = g.ball.dir, hp = g.health;
-      g._collide(200, 400);
-      assert.equal(g.ball.dir, dir, `${type} boosted=${boost}: kept its heading`);
-      assert.equal(g.health, hp, `${type} boosted=${boost}: kept its health`);
-    }
+  for (const boost of [false, true]) {
+    const g = mkGame();
+    put(g, makeLooseMote(0, 0, 1, D1), { boost });
+    const dir = g.ball.dir, hp = g.health;
+    g._collide(200, 400);
+    assert.equal(g.ball.dir, dir, `boosted=${boost}: kept its heading`);
+    assert.equal(g.health, hp, `boosted=${boost}: kept its health`);
   }
 });
 
 // ── strength ────────────────────────────────────────────────────────────────
 
-test('the ball is worth more while a shove is behind it', () => {
+test('a shove adds exactly one to the ball, and the shop adds more', () => {
+  assert.equal(CFG.base.boostStrength, 1, 'one by default');
+
   const g = mkGame();
-  assert.equal(g._ballWorld(0, 0).strength, CFG.base.strength);
+  assert.equal(g._ballWorld(0, 0).strength, 1, 'a resting ball is 1');
   g.ball.state = 'boost';
-  assert.equal(g._ballWorld(0, 0).strength, CFG.base.strength + CFG.base.boostStrength);
+  assert.equal(g._ballWorld(0, 0).strength, 2, 'and a shoving one is 2');
+
+  // Bought levels land on the shove, not on the resting ball.
+  const up = new Game({}, stubInput(), {});
+  up.resize(400, 800, 1);
+  up.startRun(1, { ...emptyUpgrades(), strength: 3 });
+  up.phase = 'play';
+  assert.equal(up._ballWorld(0, 0).strength, 1, 'still 1 at rest');
+  up.ball.state = 'boost';
+  assert.equal(up._ballWorld(0, 0).strength, 2 + 3, 'and 3 higher while shoving');
+});
+
+test('run 1 already needs a boost, because not everything in it is strength 1', () => {
+  const pool = difficulty(1).enemyPool.map((k) => ENEMIES[k]);
+  const resting = CFG.base.strength;
+  const shoving = CFG.base.strength + CFG.base.boostStrength;
+
+  assert.ok(pool.some((d) => d.strength <= resting),
+    'something in run 1 dies to a resting ball');
+  assert.ok(pool.some((d) => d.strength > resting && d.strength <= shoving),
+    'and something in run 1 needs the shove, and is beatable with it');
 });
 
 test('the bigger number wins the contact, and a tie goes to the ball', () => {
@@ -345,7 +376,7 @@ test('a death clears whatever was camping the respawn, but not the gold', () => 
   const home = g.paddleBPos();
   const near = makeObstacle('slab', home.x, home.y, 1, D1);
   const far = makeObstacle('slab', home.x, home.y + 400, 1, D1);
-  const loot = makeGold('mote', home.x, home.y, 1, D1);
+  const loot = makeLooseMote(home.x, home.y, 1, D1);
   g.entities.push(near, far, loot);
   g._loseLife(null);
   assert.equal(near.dead, true, 'a hazard on the respawn is swept');
@@ -407,11 +438,6 @@ test('reverses() is the one place a bounce is decided', () => {
   assert.equal(reverses('crack'), false);
   assert.equal(reverses('take'), false);
   assert.equal(reverses('pass'), false);
-});
-
-test('ore only ever answers one question', () => {
-  assert.equal(resolveOre({ boosted: true }), 'crack');
-  assert.equal(resolveOre({ boosted: false }), 'pass');
 });
 
 // ── geometry ────────────────────────────────────────────────────────────────
@@ -535,23 +561,23 @@ test('points do nothing but clear the stage', () => {
   assert.equal(poor.active, true, 'and a huge wallet clears nothing');
 });
 
-test('run 1 carries all three families, because it has to', () => {
+test('run 1 has to have something to kill, because that is the whole economy', () => {
   const d = difficulty(1);
-  assert.ok(d.goldPool.length, 'something to dig, or nothing pays for upgrades');
-  assert.ok(d.enemyPool.length, 'something to kill, or the target is unreachable');
+  assert.ok(d.enemyPool.length, 'enemies are the only source of points *and* gold');
   assert.ok(d.obstaclePool.length, 'something to dodge, or there is no game');
 });
 
 test('after run 1 it is exactly one new piece per run', () => {
-  const spread = (d) => [...d.goldPool, ...d.enemyPool, ...d.obstaclePool];
+  const spread = (d) => [...d.enemyPool, ...d.obstaclePool];
   const seen = new Set(spread(difficulty(1)));
-  for (let n = 2; n <= 6; n++) {
+  for (let n = 2; n <= 5; n++) {
     const fresh = spread(difficulty(n)).filter((k) => !seen.has(k));
     assert.equal(fresh.length, 1, `run ${n} should bring exactly one new piece`);
     seen.add(fresh[0]);
   }
-  assert.equal(seen.size, Object.keys(ALL).length, 'everything is in play by run 6');
-  assert.deepEqual(spread(difficulty(12)), spread(difficulty(6)), 'and nothing new after that');
+  const spawnable = [...Object.keys(ENEMIES), ...Object.keys(OBSTACLES)];
+  assert.equal(seen.size, spawnable.length, 'everything spawnable is in play by run 5');
+  assert.deepEqual(spread(difficulty(12)), spread(difficulty(5)), 'and nothing new after that');
 });
 
 test('targets and threat both climb every run', () => {

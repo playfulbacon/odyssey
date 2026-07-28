@@ -7,9 +7,9 @@
 
 import { CFG, difficulty, derived } from './config.js';
 import {
-  PALETTE, GOLD, ENEMIES, OBSTACLES, defOf,
-  makeGold, makeLooseMote, makeEnemy, makeObstacle,
-  updateEntity, hitTest, resolveEnemy, resolveOre, reverses, ballColorFor,
+  PALETTE, ENEMIES, OBSTACLES, defOf,
+  makeLooseMote, makeEnemy, makeObstacle,
+  updateEntity, hitTest, resolveEnemy, reverses, ballColorFor,
 } from './entities.js';
 import { sfx } from './audio.js';
 
@@ -61,8 +61,8 @@ export class Game {
   }
 
   // One page per piece: only that piece spawns, so a mechanic can be met on its
-  // own. Enemy and obstacle pages get motes alongside, purely so there is
-  // something harmless on the field to steer around them for.
+  // own. Gold turns up on the enemy pages the same way it does anywhere else —
+  // by falling out of something you killed.
   startPlayground(type) {
     const def = defOf(type);
     this.mode = 'playground';
@@ -71,17 +71,14 @@ export class Game {
     const d = difficulty(1);
     this.diff = d;
 
-    d.goldPool = def.cls === 'gold' ? [type] : ['mote'];
     d.enemyPool = def.cls === 'enemy' ? [type] : [];
     d.obstaclePool = def.cls === 'obs' ? [type] : [];
-    d.maxGold = 1;
     d.maxEnemies = def.cls === 'enemy' ? 2 : 0;
     d.maxObstacles = def.cls === 'obs' ? 3 : 0;
     d.enemyGap = 2.2;
     d.obstacleGap = 2.4;
     d.enemyTtl = 26;
     d.obstacleTtl = 22;
-    d.oreTtl = Infinity;
 
     // A sandbox has to be able to beat the thing it is teaching. At base stats
     // a JANUS is deliberately out of reach — that is what BOOST STRENGTH is
@@ -108,7 +105,6 @@ export class Game {
     this.floaters = [];
     this.obstacleTimer = this.mode === 'playground' ? 0.6 : 2.2;
     this.enemyTimer = this.mode === 'playground' ? 0.5 : 1.4;
-    this.goldTimer = 0.35;
     this.shake = 0;
     this.flash = 0;
     this.banner = null;
@@ -350,12 +346,6 @@ export class Game {
       return r;
     }
 
-    if (e.type === 'ore') {
-      const r = resolveOre(world);
-      if (r === 'crack') this._crack(e);
-      return r;
-    }
-
     this._bank(e);
     return 'take';
   }
@@ -371,27 +361,6 @@ export class Game {
     this.shake = Math.max(this.shake, 1.6 * this.S);
   }
 
-  // A shove knocks one charge out of a seam as loose motes. The seam itself is
-  // never dangerous and never blocks — the ball goes straight through it.
-  _crack(e) {
-    e.charges -= 1;
-    e.flare = 1;
-    const n = e.yield;
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 + rand(0, 1);
-      const d = e.r * 0.5;
-      this.entities.push(makeLooseMote(
-        e.x + Math.cos(a) * d, e.y + Math.sin(a) * d, this.S, this.diff));
-    }
-    this._burst(e.x, e.y, PALETTE.gold, 14, 170);
-    sfx.crack();
-    this.shake = Math.max(this.shake, 3 * this.S);
-    if (e.charges <= 0) {
-      e.dead = true;
-      this._burst(e.x, e.y, PALETTE.gold, 20, 210);
-    }
-  }
-
   // ── enemies ───────────────────────────────────────────────────────────────
 
   _kill(e) {
@@ -400,11 +369,25 @@ export class Game {
     this.score += gain;
     this._float(e.x, e.y, `+${gain}`, e.color);
     this._burst(e.x, e.y, e.color, 26, 220);
+    this._drop(e);
     sfx.destroy();
     this.mult = Math.min(CFG.multCap, this.mult + 1);
     this.shake = Math.max(this.shake, 5 * this.S);
     this.flash = 0.3;
     this.flashColor = e.color;
+  }
+
+  // The gold an enemy was carrying, thrown out where it stood. Points are
+  // already banked by this stage; the gold still has to be swept up before it
+  // fades, so a kill is only half paid until somebody goes back for it.
+  _drop(e) {
+    const n = e.drop || 0;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + rand(0, 1);
+      const d = e.r * 0.45;
+      this.entities.push(makeLooseMote(
+        e.x + Math.cos(a) * d, e.y + Math.sin(a) * d, this.S, this.diff));
+    }
   }
 
   // Turned away by the plating, or by arriving at the weak point the wrong way.
@@ -476,12 +459,9 @@ export class Game {
     const live = this.entities.filter((e) => !e.dead);
     const d = this.diff;
 
-    // Loose motes shaken out of a seam are a windfall, not stock — they must
-    // not hold the next spawn back, or cracking an ore starves the field.
-    const gold = live.filter((e) => e.cls === 'gold' && !e.damp);
-    this._feed(dt, 'goldTimer', gold.length < (d.maxGold || 1), d.goldGap || 0.35,
-      () => this._spawnFrom(d.goldPool, makeGold, GOLD, 60));
-
+    // Nothing spawns gold. It reaches the field one way only — out of an enemy
+    // that just died — so the director has two families to think about, not
+    // three.
     this._feed(dt, 'enemyTimer',
       d.enemyPool.length > 0 && live.filter((e) => e.cls === 'enemy').length < d.maxEnemies,
       d.enemyGap, () => this._spawnFrom(d.enemyPool, makeEnemy, ENEMIES, 100));

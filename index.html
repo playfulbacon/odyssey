@@ -44,9 +44,10 @@
       <p>While your finger is off the screen your paddle is frozen where you left it. Nothing else about who is holding matters anywhere in the game: <b>when it is your turn to shove, your lift shoves</b>, whatever the other player is doing.</p>
 
       <h3>READING THE FIELD</h3>
-      <p>There are two things worth having and they are not the same thing. <b>Gold</b> buys upgrades, and that is all gold does. <b>Points</b> clear stages, and that is all points do — they come from killing enemies, they are measured against the run target, and once the target is met they stop mattering. They are never spent, never carried forward and never totalled.</p>
+      <p>There are two things worth having and they are not the same thing. <b>Gold</b> buys upgrades, and that is all gold does. <b>Points</b> clear stages, and that is all points do — they are measured against the run target, and once the target is met they stop mattering. They are never spent, never carried forward and never totalled.</p>
+      <p><b>Both come from the same place: killing enemies.</b> Nothing else on the field pays anything.</p>
       <dl class="legend">
-        <dt style="color:#ffcf3d">O</dt><dd><b>GOLD.</b> Motes and ore. Never dangerous.</dd>
+        <dt style="color:#ffcf3d">O</dt><dd><b>GOLD.</b> Loot from a kill. Never dangerous, and it fades.</dd>
         <dt style="color:#ff5fa8">2</dt><dd><b>ENEMY.</b> Pink, and the numeral is its strength.</dd>
         <dt style="color:#ff4a55">X</dt><dd><b>OBSTACLE.</b> Red. No strength, no points, no way through — it only ever costs you health.</dd>
         <dt style="color:#ff9633">■</dt><dd><b>ORANGE</b> — boost. The shoving ball, a shield's weak point, and the paddle whose shove is up next.</dd>
@@ -54,8 +55,8 @@
       </dl>
 
       <h3>GOLD</h3>
-      <p>The <b>GOLD MOTE</b> is loose gold — steer the line across it and it is yours. No boost, no timing, no risk.</p>
-      <p>A <b>GOLD ORE</b> is a seam locked in rock. Shove a boosted ball into it and one charge cracks out as a scatter of loose motes; a plain ball does nothing at all. A fresh seam holds three charges, and the loose motes fade if nobody comes and gets them.</p>
+      <p><b>Gold is never lying around waiting for you.</b> Nothing spawns it. It exists only as loot: a dying enemy throws out a scatter of <b>GOLD MOTES</b> where it stood, and they fade if nobody comes and gets them.</p>
+      <p>So a kill pays twice, on two different clocks. The <b>points</b> land the instant it dies and can never be taken away. The <b>gold</b> is still on the floor, and you have to steer the line back across it before it goes. Bigger enemies drop more.</p>
 
       <h3>STRENGTH</h3>
       <p><b>Your ball has a strength, and so does every enemy — both numbers are written on them.</b> A contact between the two is settled by one comparison:</p>
@@ -63,7 +64,8 @@
         <li>Ball <b>equal or greater</b> — the enemy dies and pays points.</li>
         <li>Ball <b>weaker</b> — the ball takes the damage instead, and is thrown back the way it came.</li>
       </ul>
-      <p>A shove adds to the ball's strength for as long as it lasts, which is why the number on the ball goes up the moment it turns orange. Buy <b>BOOST STRENGTH</b> and it goes up further.</p>
+      <p><b>A shove adds 1 to the ball's strength</b> for as long as it lasts, which is why the number on the ball goes up the moment it turns orange — a resting ball is 1, a boosted one is 2. <b>BOOST STRENGTH</b> raises what a shove adds, and it is the one upgrade you cannot do without: everything on the field gains strength as the runs go by.</p>
+      <p>Both halves of that lesson are on the field from run 1. A <b>DRONE</b> is strength 1 and dies to a resting ball; a <b>BRUTE</b> is strength 2 and will not die unless the ball arrives orange.</p>
 
       <h3>SHIELDS AND WEAK POINTS</h3>
       <p>Some enemies wear a steel ring with <b>one or two orange weak points</b> cut into it. The plating is inert — bounce off it all day and nothing happens to either of you. The weak point is the only way in, and it takes a <b>boosted</b> ball.</p>
@@ -72,7 +74,8 @@
 
       <h3>ENEMIES</h3>
       <ul class="ticks">
-        <li><b>DRONE</b> — strength 1, no shield. A plain ball matches it at the start of a run.</li>
+        <li><b>DRONE</b> — strength 1, no shield. A resting ball matches it, so it dies to a plain pass.</li>
+        <li><b>BRUTE</b> — strength 2, no shield. One point too strong for a resting ball: no trick to it, it just has to be shoved.</li>
         <li><b>CYCLOPS</b> — strength 2, one weak point. One player's job.</li>
         <li><b>JANUS</b> — strength 3, a weak point facing each of you.</li>
       </ul>
@@ -113,13 +116,11 @@
       <h2>PLAYGROUND</h2>
       <p class="lede">No clock. No target. Endless lives. Pick a piece and learn it.</p>
       <dl class="legend">
-        <dt style="color:#ffcf3d">O</dt><dd>gold — the wallet. Motes and ore, never dangerous</dd>
+        <dt style="color:#ffcf3d">O</dt><dd>gold — loot dropped by a kill. Collect it before it fades</dd>
         <dt style="color:#ff5fa8">2</dt><dd>pink — an enemy, and the numeral is its strength</dd>
         <dt style="color:#ff4a55">X</dt><dd>red — an obstacle, no strength to beat and no way through</dd>
         <dt style="color:#ff9633">■</dt><dd>orange — boost: the shoving ball, a weak point, and the paddle whose shove is up next</dd>
       </dl>
-      <h3 class="sec">GOLD</h3>
-      <div class="cards" id="pg-gold"></div>
       <h3 class="sec">ENEMIES</h3>
       <div class="cards" id="pg-enemies"></div>
       <h3 class="sec">OBSTACLES</h3>

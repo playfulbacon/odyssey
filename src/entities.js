@@ -1,18 +1,21 @@
 // Entity registry, factories, per-frame behaviour and hit tests.
 //
 // Three families, and each one answers a different question:
-//   cls 'gold'  — the currency. MOTEs are picked up by touching them; ORE has
-//                 to be shoved into to shake them loose. Never dangerous.
 //   cls 'enemy' — worth points, and the only things that can be *defeated*.
 //                 Every enemy has a strength, and so does the ball; the bigger
 //                 number wins the contact. Some wear a shield with a weak point
 //                 in it, which is the only way in.
+//   cls 'gold'  — the currency, and it is never spawned. Gold exists only as
+//                 loot: an enemy scatters it when it dies, and it has to be
+//                 picked up before it fades. Killing pays twice, but only if
+//                 you go back for it.
 //   cls 'obs'   — hazards. No strength, no points, no way through. Touching one
 //                 costs health, full stop.
 //
 // ── the visual language ─────────────────────────────────────────────────────
 //
-//   gold    #ffcf3d  gold. Motes and ore, and nothing else is ever this colour.
+//   gold    #ffcf3d  gold. Loot dropped by a kill, and nothing else is ever
+//                    this colour.
 //   orange  #ff9633  boost. The boosting ball, the paddle whose shove is up
 //                    next, and a shield's weak point — because a weak point is
 //                    precisely a place where boost goes.
@@ -41,19 +44,17 @@ export const BALL_STATES = ['boost', 'normal'];
 export const ballColorFor = (state) => (state === 'boost' ? PALETTE.boost : PALETTE.ink);
 
 // ── gold ────────────────────────────────────────────────────────────────────
+//
+// One piece, and nothing ever spawns it. A MOTE only exists because an enemy
+// died and threw it out, and it fades if nobody comes for it — so a kill is
+// worth points immediately and gold only if you go back and sweep.
 
 export const GOLD = {
   mote: {
     key: 'mote', cls: 'gold', label: 'GOLD MOTE', color: PALETTE.gold,
-    gold: 15, r: 9,
-    blurb: 'Loose gold. Steer the line across it and it is yours — no boost, no timing, no risk.',
-    hint: 'Gold buys upgrades between runs. It is not worth any points.',
-  },
-  ore: {
-    key: 'ore', cls: 'gold', label: 'GOLD ORE', color: PALETTE.gold,
-    gold: 0, r: 21, charges: 3, yield: 3,
-    blurb: 'A seam of gold locked in rock. A boosted ball cracks a charge out of it and scatters loose motes; a plain ball bounces off nothing and does nothing at all.',
-    hint: 'Three charges in a fresh seam. Take turns shoving so the ball arrives orange every pass.',
+    gold: 15, r: 9, ttl: 12,
+    blurb: 'Loose gold, thrown out by a dying enemy. Steer the line across it and it is yours.',
+    hint: 'It fades. Points land the moment you kill; the gold still has to be collected.',
   },
 };
 
@@ -71,19 +72,25 @@ export const GOLD = {
 export const ENEMIES = {
   drone: {
     key: 'drone', cls: 'enemy', label: 'DRONE', color: PALETTE.enemy,
-    strength: 1, value: 200, r: 15, weak: 0,
-    blurb: 'Bare, unshielded and weak. Any ball at all matches its strength at the start of a run, so it dies to a plain pass.',
-    hint: 'Watch the numbers. Once a run starts adding strength, even a drone needs a shove behind the ball.',
+    strength: 1, value: 200, drop: 1, r: 15, weak: 0,
+    blurb: 'Bare, unshielded and weak. A resting ball matches its strength at the start of a run, so it dies to a plain pass.',
+    hint: 'The only thing in the game you can kill without shoving — and not for long.',
+  },
+  brute: {
+    key: 'brute', cls: 'enemy', label: 'BRUTE', color: PALETTE.enemy,
+    strength: 2, value: 380, drop: 2, r: 19, weak: 0,
+    blurb: 'The same bare shape one size up, and one point too strong for a resting ball. No shield and no trick to it: it simply will not die unless the ball arrives orange.',
+    hint: 'This is what boost is for. A resting ball bounces off it and loses health for the trouble.',
   },
   cyclops: {
     key: 'cyclops', cls: 'enemy', label: 'CYCLOPS', color: PALETTE.enemy,
-    strength: 2, value: 600, r: 22, weak: 1,
+    strength: 2, value: 600, drop: 3, r: 22, weak: 1,
     blurb: 'One eye. A steel ring with a single orange weak point cut in it, facing one end of the phone — and the ball can only enter through it while running away from that end.',
     hint: 'Whoever it is facing has to be the one who shoves. The other player just steers and keeps still.',
   },
   janus: {
     key: 'janus', cls: 'enemy', label: 'JANUS', color: PALETTE.enemy,
-    strength: 3, value: 1000, r: 25, weak: 2,
+    strength: 3, value: 1000, drop: 5, r: 25, weak: 2,
     blurb: 'Two faces, one looking at each of you, so either player can be the one to shove it. It is stronger than anything else on the field to make up for the easier opening.',
     hint: 'The easy one to hit and the hard one to beat. Check your strength before you commit.',
   },
@@ -173,10 +180,6 @@ export function resolveEnemy(e, world) {
   return world.strength >= e.strength ? 'kill' : 'hurt';
 }
 
-// 'crack' — a charge comes out as loose motes
-// 'pass'  — nothing happens; ore is never dangerous
-export const resolveOre = (world) => (world.boosted ? 'crack' : 'pass');
-
 // A contact that turns the ball round. Blocked by a shield, or beaten by
 // something stronger — either way the ball goes back the way it came.
 export const reverses = (r) => r === 'block' || r === 'hurt';
@@ -212,27 +215,17 @@ function scatter(e, speed, S, diff, rng) {
   e.vy = Math.sin(a) * sp;
 }
 
-export function makeGold(type, x, y, S, diff, rng = Math.random) {
-  const def = GOLD[type];
-  const e = base(def, x, y, S);
-  e.gold = def.gold;
-  if (type === 'ore') {
-    e.charges = def.charges + (diff.oreBonus || 0);
-    e.chargesMax = e.charges;
-    e.yield = def.yield;
-    e.ttl = diff.oreTtl || Infinity;
-  }
-  return e;
-}
-
-// A mote shaken out of a seam: it flies off, slows to a stop and expires if
-// nobody comes and gets it.
+// Loot thrown out by a dying enemy: it flies off, slows to a stop, and expires
+// if nobody comes and gets it. There is no other way for gold to reach the
+// field — nothing spawns it.
 export function makeLooseMote(x, y, S, diff, rng = Math.random) {
-  const e = makeGold('mote', x, y, S, diff, rng);
+  const def = GOLD.mote;
+  const e = base(def, x, y, S);
+  e.gold = Math.round(def.gold * (diff.valueScale || 1));
   scatter(e, 70, S, { entitySpeed: 1 }, rng);
   e.damp = 1.9;
   e.spawnT = 0.25;
-  e.ttl = 9;
+  e.ttl = def.ttl;
   return e;
 }
 
@@ -241,6 +234,7 @@ export function makeEnemy(type, x, y, S, diff, rng = Math.random) {
   const e = base(def, x, y, S);
   e.strength = def.strength + (diff.strengthBonus || 0);
   e.value = Math.round(def.value * (diff.valueScale || 1));
+  e.drop = def.drop;
   e.ttl = diff.enemyTtl || Infinity;
   e.spawnT = 1.2;
   e.shieldR = e.r + 9 * S;

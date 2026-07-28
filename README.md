@@ -24,32 +24,35 @@ both lift at once the two shoves cancel out. While your finger is off the glass
 your paddle is frozen where you left it — and nothing else about who is holding
 matters anywhere in the game. When it is your turn to shove, your lift shoves.
 
-## Two resources
+## Two resources, one source
 
-**Gold** is the wallet. It comes from gold motes, it buys upgrades between runs,
-and it is worth no points at all.
+**Gold buys upgrades; points clear stages**, and neither does the other's job.
+Points are not spent, not carried forward and not totalled — a run's points
+matter only against that run's target, and the moment it is met they stop
+mattering at all.
 
-**Points** come from killing enemies and nothing else, and points are what the
-run target is measured in.
+Both come out of the same act: **killing an enemy**. Nothing else on the field
+pays anything. But they arrive on different clocks, and that is the whole of the
+loop:
 
-They never feed each other. **Gold buys upgrades; points clear stages, and that
-is the whole of what points do.** They are not spent, not carried forward and
-not totalled — a run's points matter only against that run's target, and the
-moment it is met they stop mattering at all. A run is won by fighting and paid
-for by digging.
+- The **points** land the instant it dies, and can never be taken away.
+- The **gold** is thrown onto the floor where it stood, as a scatter of motes
+  that **fade if nobody comes for them**. Nothing else ever puts gold on the
+  field.
 
-Which is why clearing early pays a **gold** bonus rather than bonus points:
-points you have already won the run with are worth nothing, and the only reward
-worth handing out is the one you can spend.
+So a kill is only half paid until somebody steers the line back across the
+wreckage. Killing wins you the run; sweeping pays for the next one.
 
-The record kept between games is *how deep you got*, not a score — adding up
-points across runs would be adding up unrelated numbers.
+Clearing early pays a **gold** bonus rather than bonus points, for the same
+reason: points you have already won the run with are worth nothing, and the only
+reward worth handing out is one you can spend. The record kept between games is
+*how deep you got*, not a score.
 
 ## Reading the field
 
 | | |
 |---|---|
-| **gold** | gold. Motes and ore, and never dangerous. |
+| **gold** | loot from a kill. Never dangerous, and it fades. |
 | **pink** | an enemy. Beatable, if your number is big enough. |
 | **red** | an obstacle. Not beatable at any number. |
 | **orange** | boost — the shoving ball, a weak point, and the paddle whose shove is up next. |
@@ -79,13 +82,18 @@ on them.** A contact between the two is settled by one comparison:
 
 | | |
 |---|---|
-| ball **equal or greater** | the enemy dies and pays points |
+| ball **equal or greater** | the enemy dies and pays |
 | ball **weaker** | the ball takes the damage and is thrown back |
 
-A shove adds to the ball's strength for as long as it lasts, which is why the
-number on the ball goes up the moment it turns orange. `BOOST STRENGTH` raises
-it further, and every run adds strength to everything on the field — so the
-upgrade is not a luxury, it is how you keep up.
+**A shove adds 1**, which is why the number on the ball goes up the moment it
+turns orange: a resting ball is **1**, a boosted one is **2**. `BOOST STRENGTH`
+raises what the shove adds, and everything on the field gains strength as the
+runs go by — so it is not a luxury, it is how you keep up.
+
+Both halves of that lesson are on the field from run 1. A `DRONE` is strength 1
+and dies to a resting ball. A `BRUTE` is strength 2 and simply will not, no
+matter how well you aim: it has no shield and no trick to it, it just has to be
+shoved.
 
 ## Shields and weak points
 
@@ -105,21 +113,18 @@ Arriving at the right hole from the wrong side is just a wall.
 
 ## Pieces
 
-**Gold** — the wallet, and never a threat.
+**Enemies** — the only things that pay anything, and the only things that can be
+beaten. Every one drops its gold on the floor when it dies.
 
-| | | |
-|---|---|---|
-| **GOLD MOTE** | 15 gold | Loose gold. Touch it and it is yours. |
-| **GOLD ORE** | 3 charges | A seam. Each boosted shove cracks a charge out as a scatter of loose motes; a plain ball does nothing. Loose motes fade if nobody comes for them. |
+| | strength | points | drops | opening |
+|---|---|---|---|---|
+| **DRONE** | 1 | 200 | 1 mote | none. A resting ball is already enough. |
+| **BRUTE** | 2 | 380 | 2 motes | none, but a resting ball is one short — it has to be shoved. |
+| **CYCLOPS** | 2 | 600 | 3 motes | one weak point. One player's job. |
+| **JANUS** | 3 | 1000 | 5 motes | one weak point facing each of you. |
 
-**Enemies** — the only things that pay points, and the only things that can be
-beaten.
-
-| | strength | pays | opening |
-|---|---|---|---|
-| **DRONE** | 1 | 200 | none. Any ball strong enough, from any side. |
-| **CYCLOPS** | 2 | 600 | one weak point. One player's job. |
-| **JANUS** | 3 | 1000 | one weak point facing each of you. |
+**Gold** — a `GOLD MOTE` is worth 15, and nothing ever spawns one. They exist
+only as loot, and they fade.
 
 **Obstacles** — red, worth nothing, no strength to beat. Touching one costs
 health and throws the ball back, every time.
@@ -145,18 +150,17 @@ Each run is a clock and a number of **points** to reach. Clear it and spend your
 **gold** — boost strength, ball health, extra lives, extra time — before the
 next one. Miss the target or burn every life and the game is over.
 
-Run 1 has to carry all three families at once, because points come only from
-kills and gold only from motes: a run with nothing to fight has an unreachable
-target, and a run with nothing to dig pays for nothing. After that it is one new
-piece per run, alternating between something to take and something to get past.
+Run 1 opens with both halves of the strength lesson — a `DRONE` you can take at
+rest and a `BRUTE` you cannot — plus a `SLAB` to steer around. After that it is
+one new piece per run, alternating between something to fight and something to
+get past.
 
 | run | new |
 |---|---|
-| 2 | `GOLD ORE` — the first reason to boost |
-| 3 | `SHARD` |
-| 4 | `CYCLOPS` — the first weak point |
-| 5 | `ROTOR` |
-| 6 | `JANUS` |
+| 2 | `SHARD` |
+| 3 | `CYCLOPS` — the first weak point |
+| 4 | `ROTOR` |
+| 5 | `JANUS` |
 
 Everything on the field also gains strength as the runs go by, which is the one
 thing that never stops escalating.
@@ -164,9 +168,9 @@ thing that never stops escalating.
 ## Playground
 
 A no-clock, no-target, endless-lives sandbox with one page per piece, so a
-mechanic can be learned in isolation. Enemy and obstacle pages also spawn motes,
-so there is something harmless to steer around them for. The sandbox hands you
-enough boost strength to beat the strongest enemy in the game — at base stats a
+mechanic can be learned in isolation. Gold turns up on the enemy pages the same
+way it does anywhere else — by falling out of something you killed. The sandbox
+hands you enough boost strength to beat the strongest enemy in the game — at base stats a
 `JANUS` is deliberately out of reach, and a page you cannot beat teaches
 nothing.
 
@@ -237,8 +241,10 @@ Two things are derived rather than written down, so the picture cannot disagree
 with the rules: an enemy's shield plating comes out of `shieldSpans()`, the same
 table `weakPointAt()` reads, and every piece's colour comes from its family.
 
-**Because points come only from kills, `maxEnemies` is the score curve.** If a
-run target starts feeling unreachable, that is the dial, not the target.
+**`maxEnemies` is both curves at once.** Enemies are the only source of points
+*and* the only source of gold, so how many are on the field decides whether the
+target is reachable and whether the shop is affordable. If either starts feeling
+wrong, that is the dial before `CFG.run.target` or the upgrade prices.
 
 While a run is open, `window.__g` is the live game and `window.__odyssey` the
 meta-game, so values can be poked from the console mid-play.

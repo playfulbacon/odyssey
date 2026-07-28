@@ -84,16 +84,6 @@ function pathO(ctx, x, y, r) {
   ctx.arc(x, y, r, 0, TAU);
 }
 
-function pathPoly(ctx, x, y, r, n, rot) {
-  ctx.beginPath();
-  for (let i = 0; i < n; i++) {
-    const a = rot + (i / n) * TAU;
-    const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
-    if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
-  }
-  ctx.closePath();
-}
-
 function pathX(ctx, x, y, r) {
   const k = r * 0.72;
   ctx.beginPath();
@@ -366,34 +356,14 @@ function drawEntity(ctx, g, e) {
 
 // ── gold ────────────────────────────────────────────────────────────────────
 
+// Loot, and the only thing on the field that was never spawned. A filled O with
+// a pulse going out, because it is pure invitation and nothing else.
 function drawGold(ctx, g, e) {
   const S = g.S;
   const baseA = ctx.globalAlpha;
   ctx.strokeStyle = GOLD;
   ctx.fillStyle = GOLD;
 
-  if (e.type === 'ore') {
-    // A chunk, not a bead — a seam has to look like something you hit rather
-    // than something you sweep up. One notch per charge still in it.
-    ctx.globalAlpha = baseA * (0.16 + (e.flare || 0) * 0.3);
-    pathPoly(ctx, e.x, e.y, e.r, 6, e.age * 0.25);
-    ctx.fill();
-    ctx.globalAlpha = baseA * 0.92;
-    ctx.lineWidth = 2 * S;
-    pathPoly(ctx, e.x, e.y, e.r, 6, e.age * 0.25);
-    ctx.stroke();
-
-    const n = e.chargesMax, sp = 6.5 * S;
-    for (let i = 0; i < n; i++) {
-      ctx.globalAlpha = baseA * (i < e.charges ? 1 : 0.16);
-      pathO(ctx, e.x + (i - (n - 1) / 2) * sp, e.y, 2.1 * S);
-      ctx.fill();
-    }
-    ctx.globalAlpha = baseA;
-    return;
-  }
-
-  // A mote: a filled O with a pulse going out, because it is pure invitation.
   const pulse = 1 + Math.sin(e.age * 9) * 0.12;
   pathO(ctx, e.x, e.y, e.r * 0.62 * pulse);
   ctx.fill();

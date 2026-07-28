@@ -107,36 +107,26 @@ export function difficulty(run) {
   const r = Math.max(1, run);
   const k = r - 1;
 
-  // Run 1 has to carry all three families at once, because points only come
-  // from kills and gold only comes from motes — a run without an enemy has no
-  // way to hit its target, and a run without gold pays for nothing. After that
-  // it is one new piece per run, alternating between something to take and
-  // something to get past.
-  const goldPool = ['mote'];
-  if (r >= 2) goldPool.push('ore');
-
-  const enemyPool = ['drone'];
-  if (r >= 4) enemyPool.push('cyclops');
-  if (r >= 6) enemyPool.push('janus');
+  // Gold is never spawned — it only falls out of a kill — so the enemy pool is
+  // the whole economy: it is where the points come from and where the gold
+  // comes from. Run 1 opens with both halves of the strength lesson: a DRONE a
+  // resting ball can take, and a BRUTE it cannot.
+  const enemyPool = ['drone', 'brute'];
+  if (r >= 3) enemyPool.push('cyclops');
+  if (r >= 5) enemyPool.push('janus');
 
   const obstaclePool = ['slab'];
-  if (r >= 3) obstaclePool.push('shard');
-  if (r >= 5) obstaclePool.push('rotor');
+  if (r >= 2) obstaclePool.push('shard');
+  if (r >= 4) obstaclePool.push('rotor');
 
   return {
     run: r,
-    goldPool,
     enemyPool,
     obstaclePool,
 
-    maxGold: goldPool.length > 1 ? 2 : 1,
-    goldGap: 0.35,
-    oreBonus: Math.floor(k * 0.3),          // deeper seams later on
-    oreTtl: Math.max(14, 22 - k * 0.8),
-
-    // Points come from kills and nowhere else, so how many enemies are on the
-    // field *is* the score curve. Keep two around from the very first run or
-    // the target is arithmetic the player cannot reach.
+    // Points come from kills and nowhere else, and so does gold, so how many
+    // enemies are on the field *is* both curves at once. Keep two around from
+    // the very first run or the target is arithmetic the player cannot reach.
     maxEnemies: Math.min(5, 2 + Math.floor(k * 0.5)),
     enemyGap: Math.max(1.4, 3.2 - k * 0.25),
     enemyTtl: Math.max(11, 20 - k * 0.8),

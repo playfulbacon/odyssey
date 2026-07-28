@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { difficulty, emptyUpgrades } from '../src/config.js';
-import { PALETTE, GOLD, ENEMIES, OBSTACLES, makeGold, makeEnemy, makeObstacle,
+import { PALETTE, GOLD, ENEMIES, OBSTACLES, makeLooseMote, makeEnemy, makeObstacle,
   WEAK_HALF, weakAngle } from '../src/entities.js';
 import { Game } from '../src/game.js';
 import { render, railHeat, RAIL_DOT } from '../src/render.js';
@@ -64,12 +64,13 @@ function frameWith(type, aTouch, bTouch, ballState = 'normal') {
   const input = stubInput(aTouch, bTouch);
   const g = new Game({}, input, {});
   g.resize(400, 800, 1);
-  g.startPlayground(type);
+  g.startPlayground(type in GOLD ? 'drone' : type);
   g.phase = 'play';
   g.ball.state = ballState;
   g.entities.length = 0;
-  const make = type in OBSTACLES ? makeObstacle : type in ENEMIES ? makeEnemy : makeGold;
-  const e = make(type, 200, 400, 1, difficulty(1));
+  const e = type in OBSTACLES ? makeObstacle(type, 200, 400, 1, difficulty(1))
+    : type in ENEMIES ? makeEnemy(type, 200, 400, 1, difficulty(1))
+    : makeLooseMote(200, 400, 1, difficulty(1));
   e.spawnT = 0;
   g.entities.push(e);
 
@@ -84,7 +85,7 @@ function bare(aTouch, bTouch, ballState = 'normal', hot = 'a') {
   const input = stubInput(aTouch, bTouch);
   const g = new Game({}, input, {});
   g.resize(400, 800, 1);
-  g.startPlayground('mote');
+  g.startPlayground('drone');
   g.phase = 'play';
   g.ball.state = ballState;
   g.lastPaddle = hot;
@@ -258,7 +259,7 @@ test('the ball is filled with the state it is in', () => {
 test('a boosting ball leaves an orange trail behind it', () => {
   const g = new Game({}, stubInput(true, true), {});
   g.resize(400, 800, 1);
-  g.startPlayground('mote');
+  g.startPlayground('drone');
   g.phase = 'play';
   g.entities.length = 0;
 
@@ -311,42 +312,21 @@ test('an enemy wears its strength, and the ball wears its own', () => {
 });
 
 test('nothing on the field is ever painted the boost colour except a weak point', () => {
-  for (const type of ['mote', 'ore', 'drone', 'slab', 'shard', 'rotor']) {
+  for (const type of ['mote', 'drone', 'brute', 'slab', 'shard', 'rotor']) {
     const ops = frameWith(type, true, true);
     assert.equal(strokes(ops, PALETTE.boost).length, 0, `${type} strokes`);
     assert.equal(fills(ops, PALETTE.boost).length, 0, `${type} fills`);
   }
 });
 
-test('gold is gold and nothing else is', () => {
-  for (const type of Object.keys(GOLD)) {
-    assert.ok(fills(frameWith(type, true, true), PALETTE.gold).length >= 1, type);
-  }
+test('a dropped mote is the only gold on the field, and it is gold', () => {
+  const ops = frameWith('mote', true, true);
+  assert.ok(fills(ops, PALETTE.gold).length >= 1, 'the mote is drawn in gold');
   for (const type of [...Object.keys(ENEMIES), ...Object.keys(OBSTACLES)]) {
-    const ops = frameWith(type, true, true);
-    assert.equal(fills(ops, PALETTE.gold).length, 0, `${type} fills`);
-    assert.equal(strokes(ops, PALETTE.gold).length, 0, `${type} strokes`);
+    const other = frameWith(type, true, true);
+    assert.equal(fills(other, PALETTE.gold).length, 0, `${type} fills`);
+    assert.equal(strokes(other, PALETTE.gold).length, 0, `${type} strokes`);
   }
-});
-
-test('an ore shows one notch per charge, spent ones included', () => {
-  const input = stubInput(true, true);
-  const g = new Game({}, input, {});
-  g.resize(400, 800, 1);
-  g.startPlayground('ore');
-  g.phase = 'play';
-  g.entities.length = 0;
-  const e = makeGold('ore', 200, 400, 1, difficulty(1));
-  e.spawnT = 0;
-  e.charges = 1;                    // two of three already knocked out
-  g.entities.push(e);
-
-  const { ctx, ops } = recorder();
-  render(ctx, g);
-  const notches = arcs(ops).filter((o) => o.op === 'fill' && o.fillStyle === PALETTE.gold
-    && Math.abs(o.pts[0][2] - 2.1) < 1e-6);
-  assert.equal(notches.length, e.chargesMax, 'all three notches are drawn');
-  assert.equal(notches.filter((o) => o.globalAlpha > 0.5).length, 1, 'but only one is lit');
 });
 
 test('the run HUD renders without touching anything undefined', () => {
